@@ -4,13 +4,14 @@
  * Floating toolbar UI that provides quick access to all MarkUp features.
  * Extends BaseComponent and renders a fixed-position button bar.
  *
- * Buttons: TOC toggle, Theme cycle, Search toggle, Print, Settings.
+ * Buttons: TOC toggle, Theme cycle, Search toggle, Print, Settings, Drag handle.
  * Each button emits an event via EventEmitter — does NOT directly
  * call other classes (decoupled by design).
  *
  * Features:
  * - Auto-hides on scroll down, reveals on scroll up (configurable)
  * - Smooth fade animation on show/hide
+ * - Draggable via drag handle — persists position via StorageManager
  * - All DOM built via _createElement / MARKUP_DOM_HELPERS
  *
  * @class ToolbarComponent
@@ -27,6 +28,7 @@ class ToolbarComponent extends BaseComponent {
    * @param {Object} [options={}] - Configuration options.
    * @param {boolean} [options.autoHide=true] - Auto-hide on scroll down.
    * @param {string} [options.position='top-right'] - Toolbar position.
+   * @param {StorageManager} [options.storageManager=null] - StorageManager for position persistence.
    */
   constructor(eventEmitter, options = {}) {
     const prefix = (typeof MARKUP_CONSTANTS !== 'undefined')
@@ -51,11 +53,29 @@ class ToolbarComponent extends BaseComponent {
     /** @private */
     this._position = options.position || 'top-right';
 
+    /** @private @type {StorageManager|null} */
+    this._storageManager = options.storageManager || null;
+
     /** @private @type {number} */
     this._lastScrollY = 0;
 
     /** @private @type {boolean} */
     this._isHiddenByScroll = false;
+
+    /** @private @type {boolean} */
+    this._isDragging = false;
+
+    /** @private @type {number} */
+    this._dragStartX = 0;
+
+    /** @private @type {number} */
+    this._dragStartY = 0;
+
+    /** @private @type {number} */
+    this._dragOffsetX = 0;
+
+    /** @private @type {number} */
+    this._dragOffsetY = 0;
 
     // Load event constants
     const constants = (typeof MARKUP_CONSTANTS !== 'undefined') ? MARKUP_CONSTANTS : null;
@@ -71,6 +91,12 @@ class ToolbarComponent extends BaseComponent {
     // Bound handlers for proper cleanup
     /** @private */
     this._boundOnScroll = this._onScroll.bind(this);
+
+    /** @private */
+    this._boundOnDragMove = this._onDragMove.bind(this);
+
+    /** @private */
+    this._boundOnDragEnd = this._onDragEnd.bind(this);
 
     /** @private @type {Object.<string, Function>} */
     this._buttonHandlers = {};
@@ -103,6 +129,9 @@ class ToolbarComponent extends BaseComponent {
     }
 
     this._mounted = true;
+
+    // Load persisted position (async, non-blocking)
+    this._loadPersistedPosition();
   }
 
   /**
@@ -115,6 +144,10 @@ class ToolbarComponent extends BaseComponent {
 
     // Remove scroll listener
     window.removeEventListener('scroll', this._boundOnScroll);
+
+    // Remove drag listeners in case unmount happens during drag
+    document.removeEventListener('pointermove', this._boundOnDragMove);
+    document.removeEventListener('pointerup', this._boundOnDragEnd);
 
     // Remove the toolbar element from the DOM
     if (this._element && this._element.parentNode) {
@@ -167,6 +200,19 @@ class ToolbarComponent extends BaseComponent {
       return this._createElement('button', attrs, [def.icon]);
     });
 
+    // Add drag handle button
+    const dragHandler = this._onDragStart.bind(this);
+    this._buttonHandlers['drag'] = dragHandler;
+    const dragBtn = this._createElement('button', {
+      classList: [`${p}-toolbar-btn`, `${p}-toolbar-btn-drag`],
+      'aria-label': 'Drag to reposition toolbar',
+      title: 'Drag to reposition',
+      'data-action': 'drag',
+      tabindex: '0',
+      events: { pointerdown: dragHandler },
+    }, ['⠿']);
+    buttons.push(dragBtn);
+
     const toolbar = this._createElement('div', {
       classList: [`${p}-toolbar`],
       id: this._id,
@@ -199,7 +245,7 @@ class ToolbarComponent extends BaseComponent {
    * @private
    */
   _onScroll() {
-    if (!this._element || !this._autoHide) {
+    if (!this._element || !this._autoHide || this._isDragging) {
       return;
     }
 
@@ -225,6 +271,146 @@ class ToolbarComponent extends BaseComponent {
     }
 
     this._lastScrollY = currentScrollY;
+  }
+
+  // --- Drag & Drop ---
+
+  /**
+   * Start dragging the toolbar.
+   *
+   * @param {PointerEvent} event
+   * @private
+   */
+  _onDragStart(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!this._element) return;
+
+    this._isDragging = true;
+
+    // Capture pointer for reliable tracking outside the element
+    event.target.setPointerCapture(event.pointerId);
+
+    // Calculate offset from pointer to toolbar top-left
+    const rect = this._element.getBoundingClientRect();
+    this._dragOffsetX = event.clientX - rect.left;
+    this._dragOffsetY = event.clientY - rect.top;
+
+    // Add dragging visual feedback
+    this._element.classList.add(`${this._prefix}-toolbar-dragging`);
+
+    // Switch to explicit position (remove right, use left)
+    this._element.style.right = 'auto';
+    this._element.style.left = `${rect.left}px`;
+    this._element.style.top = `${rect.top}px`;
+
+    // Attach move and end listeners to document
+    document.addEventListener('pointermove', this._boundOnDragMove);
+    document.addEventListener('pointerup', this._boundOnDragEnd);
+  }
+
+  /**
+   * Handle drag movement.
+   *
+   * @param {PointerEvent} event
+   * @private
+   */
+  _onDragMove(event) {
+    if (!this._isDragging || !this._element) return;
+
+    event.preventDefault();
+
+    const newLeft = event.clientX - this._dragOffsetX;
+    const newTop = event.clientY - this._dragOffsetY;
+
+    // Clamp to viewport bounds
+    const maxLeft = window.innerWidth - this._element.offsetWidth;
+    const maxTop = window.innerHeight - this._element.offsetHeight;
+    const clampedLeft = Math.max(0, Math.min(newLeft, maxLeft));
+    const clampedTop = Math.max(0, Math.min(newTop, maxTop));
+
+    this._element.style.left = `${clampedLeft}px`;
+    this._element.style.top = `${clampedTop}px`;
+  }
+
+  /**
+   * End dragging the toolbar and persist position.
+   *
+   * @param {PointerEvent} event
+   * @private
+   */
+  _onDragEnd(event) {
+    if (!this._isDragging) return;
+
+    this._isDragging = false;
+
+    // Release pointer capture on the drag handle button
+    try {
+      const dragBtn = this._element ? this._element.querySelector(`.${this._prefix}-toolbar-btn-drag`) : null;
+      if (dragBtn && typeof dragBtn.releasePointerCapture === 'function') {
+        dragBtn.releasePointerCapture(event.pointerId);
+      }
+    } catch (_) {
+      // Pointer capture may already be released
+    }
+
+    // Remove visual feedback
+    if (this._element) {
+      this._element.classList.remove(`${this._prefix}-toolbar-dragging`);
+    }
+
+    // Remove document-level listeners
+    document.removeEventListener('pointermove', this._boundOnDragMove);
+    document.removeEventListener('pointerup', this._boundOnDragEnd);
+
+    // Persist position
+    this._savePosition();
+  }
+
+  /**
+   * Load persisted toolbar position from StorageManager.
+   *
+   * @private
+   */
+  async _loadPersistedPosition() {
+    if (!this._storageManager || !this._element) return;
+
+    try {
+      const position = await this._storageManager.get('toolbarPosition');
+      if (position && typeof position === 'object' && typeof position.top === 'number' && typeof position.left === 'number') {
+        // Validate position is within viewport
+        const maxLeft = window.innerWidth - this._element.offsetWidth;
+        const maxTop = window.innerHeight - this._element.offsetHeight;
+        const clampedLeft = Math.max(0, Math.min(position.left, maxLeft));
+        const clampedTop = Math.max(0, Math.min(position.top, maxTop));
+
+        this._element.style.right = 'auto';
+        this._element.style.left = `${clampedLeft}px`;
+        this._element.style.top = `${clampedTop}px`;
+      }
+    } catch (err) {
+      console.log('ToolbarComponent: Could not load persisted position.');
+    }
+  }
+
+  /**
+   * Save current toolbar position to StorageManager.
+   *
+   * @private
+   */
+  _savePosition() {
+    if (!this._storageManager || !this._element) return;
+
+    const rect = this._element.getBoundingClientRect();
+    const position = {
+      top: Math.round(rect.top),
+      left: Math.round(rect.left),
+    };
+
+    this._storageManager.set('toolbarPosition', position).catch((err) => {
+      console.warn('ToolbarComponent: Failed to save position:', err);
+    });
   }
 }
 

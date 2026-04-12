@@ -116,8 +116,14 @@ class ThemeManager {
     this._currentTheme = themeName;
 
     // Also update the body class for the body reset in content.css
-    if (document.body && !document.body.classList.contains('markup-body')) {
-      document.body.classList.add('markup-body');
+    // AND for body-level CSS custom properties (used by fixed-position UI chrome)
+    if (document.body) {
+      if (!document.body.classList.contains('markup-body')) {
+        document.body.classList.add('markup-body');
+      }
+      // Remove all theme classes from body, then add the current one
+      this._removeAllThemeClasses(document.body);
+      document.body.classList.add(`${this._themeClassPrefix}${themeName}`);
     }
 
     // Persist to storage (fire-and-forget, errors are non-fatal)

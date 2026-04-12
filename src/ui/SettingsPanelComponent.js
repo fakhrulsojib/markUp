@@ -453,6 +453,23 @@ class SettingsPanelComponent extends BaseComponent {
     }
   }
 
+  /**
+   * Update the theme radio button selection to reflect an external theme change.
+   * Call this when the theme is changed from outside the settings panel
+   * (e.g. toolbar cycle button, popup, or options page).
+   *
+   * @param {string} theme - The new active theme name (e.g. 'dark', 'light', 'sepia').
+   */
+  updateThemeSelection(theme) {
+    if (!this._element || !theme) return;
+
+    const p = this._prefix;
+    const radio = this._element.querySelector(`#${p}-theme-${theme}`);
+    if (radio) {
+      radio.checked = true;
+    }
+  }
+
   // --- Event Handlers ---
 
   /**

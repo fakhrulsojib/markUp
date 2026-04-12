@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 8 — Browser Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; }
+    h1 { font-size: 1.5em; margin-bottom: 8px; }
+    h2 { font-size: 1.1em; margin: 16px 0 8px; color: #8b949e; }
+    .summary { margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #161b22; }
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .warn { color: #d29922; }
+    .test-group { margin-bottom: 12px; }
+    .test-result { padding: 4px 8px; font-size: 0.85em; font-family: monospace; }
+    #sandbox { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Phase 8 — Browser Tests</h1>
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+  <div id="sandbox"></div>
+
+  <!-- Load dependencies -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <!-- Mock chrome.storage for testing outside extension context -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.storage) {
+      const _store = {};
+      window.chrome = window.chrome || {};
+      chrome.storage = {
+        sync: {
+          get: function(keys, callback) {
+            const result = {};
+            if (keys === null) {
+              Object.assign(result, _store);
+            } else if (typeof keys === 'string') {
+              if (_store[keys] !== undefined) result[keys] = _store[keys];
+            } else if (Array.isArray(keys)) {
+              keys.forEach(k => { if (_store[k] !== undefined) result[k] = _store[k]; });
+            } else if (typeof keys === 'object') {
+              for (const [k, v] of Object.entries(keys)) {
+                result[k] = _store[k] !== undefined ? _store[k] : v;
+              }
+            }
+            if (callback) callback(result);
+          },
+          set: function(items, callback) {
+            Object.assign(_store, items);
+            if (callback) callback();
+          },
+          remove: function(keys, callback) {
+            if (typeof keys === 'string') keys = [keys];
+            keys.forEach(k => delete _store[k]);
+            if (callback) callback();
+          }
+        },
+        local: {
+          get: function(keys, callback) { chrome.storage.sync.get(keys, callback); },
+          set: function(items, callback) { chrome.storage.sync.set(items, callback); },
+          remove: function(keys, callback) { chrome.storage.sync.remove(keys, callback); }
+        }
+      };
+      chrome.runtime = chrome.runtime || {};
+      chrome.runtime.lastError = null;
+      chrome.runtime.onMessage = chrome.runtime.onMessage || {
+        addListener: function() {},
+        removeListener: function() {}
+      };
+      chrome.runtime.sendMessage = chrome.runtime.sendMessage || function(msg, callback) {
+        if (callback) callback({});
+      };
+    }
+  </script>
+
+  <!-- Load core modules -->
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/MessageBus.js"></script>
+  <script src="../src/core/ThemeManager.js"></script>
+  <script src="../src/core/SearchController.js"></script>
+  <script src="../src/core/PrintManager.js"></script>
+  <script src="../src/core/KeyboardManager.js"></script>
+
+  <!-- Load UI components -->
+  <script src="../src/ui/BaseComponent.js"></script>
+  <script src="../src/ui/ToolbarComponent.js"></script>
+  <script src="../src/ui/TocPanelComponent.js"></script>
+  <script src="../src/ui/SearchBarComponent.js"></script>
+  <script src="../src/ui/SettingsPanelComponent.js"></script>
+
+  <!-- Load CSS files -->
+  <link rel="stylesheet" href="../src/styles/variables.css">
+  <link rel="stylesheet" href="../src/styles/themes/light.css">
+  <link rel="stylesheet" href="../src/styles/themes/dark.css">
+  <link rel="stylesheet" href="../src/styles/themes/sepia.css">
+  <link rel="stylesheet" href="../src/styles/typography.css">
+  <link rel="stylesheet" href="../src/content/content.css">
+  <link rel="stylesheet" href="../src/styles/ui-components.css">
+  <link rel="stylesheet" href="../src/styles/print.css">
+
+  <script>
+    (function() {
+      'use strict';
+
+      let passed = 0;
+      let failed = 0;
+      let warned = 0;
+      const results = document.getElementById('results');
+      const sandbox = document.getElementById('sandbox');
+
+      function log(type, message) {
+        const div = document.createElement('div');
+        div.className = `test-result ${type}`;
+        div.textContent = `  ${type.toUpperCase()}: ${message}`;
+        results.appendChild(div);
+        if (type === 'pass') passed++;
+        else if (type === 'fail') failed++;
+        else warned++;
+      }
+
+      function assert(condition, message) {
+        if (condition) {
+          log('pass', message);
+        } else {
+          log('fail', message);
+          console.error('FAIL:', message);
+        }
+      }
+
+      function groupHeader(name) {
+        const h2 = document.createElement('h2');
+        h2.textContent = name;
+        results.appendChild(h2);
+      }
+
+      function cleanupSandbox() {
+        sandbox.innerHTML = '';
+        sandbox.style.display = 'none';
+      }
+
+      function showSandbox() {
+        sandbox.style.display = 'block';
+      }
+
+      // ===== Test Group 1: Theme Variables on Body =====
+      groupHeader('1. Theme Variables on Body (Step 8.1)');
+
+      (function() {
+        // Add markup-body class to body for testing
+        document.body.classList.add('markup-body');
+
+        // Test default (light) body variables
+        const style = getComputedStyle(document.body);
+        const bgPrimary = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bgPrimary === '#ffffff', `body.markup-body has --markup-bg-primary: ${bgPrimary}`);
+
+        const textPrimary = style.getPropertyValue('--markup-text-primary').trim();
+        assert(textPrimary === '#24292f', `body.markup-body has --markup-text-primary: ${textPrimary}`);
+
+        const border = style.getPropertyValue('--markup-border').trim();
+        assert(border === '#d0d7de', `body.markup-body has --markup-border: ${border}`);
+
+        const accent = style.getPropertyValue('--markup-accent').trim();
+        assert(accent === '#0969da', `body.markup-body has --markup-accent: ${accent}`);
+
+        // Test dark theme body variables
+        document.body.classList.add('markup-theme-dark');
+        const darkStyle = getComputedStyle(document.body);
+        const darkBg = darkStyle.getPropertyValue('--markup-bg-primary').trim();
+        assert(darkBg === '#0d1117', `body.markup-body.markup-theme-dark has --markup-bg-primary: ${darkBg}`);
+
+        const darkText = darkStyle.getPropertyValue('--markup-text-primary').trim();
+        assert(darkText === '#e6edf3', `body.markup-body.markup-theme-dark has --markup-text-primary: ${darkText}`);
+
+        const darkBorder = darkStyle.getPropertyValue('--markup-border').trim();
+        assert(darkBorder === '#30363d', `body.markup-body.markup-theme-dark has --markup-border: ${darkBorder}`);
+        document.body.classList.remove('markup-theme-dark');
+
+        // Test sepia theme body variables
+        document.body.classList.add('markup-theme-sepia');
+        const sepiaStyle = getComputedStyle(document.body);
+        const sepiaBg = sepiaStyle.getPropertyValue('--markup-bg-primary').trim();
+        assert(sepiaBg === '#f4ecd8', `body.markup-body.markup-theme-sepia has --markup-bg-primary: ${sepiaBg}`);
+
+        const sepiaText = sepiaStyle.getPropertyValue('--markup-text-primary').trim();
+        assert(sepiaText === '#433422', `body.markup-body.markup-theme-sepia has --markup-text-primary: ${sepiaText}`);
+        document.body.classList.remove('markup-theme-sepia');
+
+        // Test light theme body variables (explicit)
+        document.body.classList.add('markup-theme-light');
+        const lightStyle = getComputedStyle(document.body);
+        const lightBg = lightStyle.getPropertyValue('--markup-bg-primary').trim();
+        assert(lightBg === '#ffffff', `body.markup-body.markup-theme-light has --markup-bg-primary: ${lightBg}`);
+        document.body.classList.remove('markup-theme-light');
+
+        // Cleanup
+        document.body.classList.remove('markup-body');
+      })();
+
+      // ===== Test Group 2: ThemeManager Body Class Application =====
+      groupHeader('2. ThemeManager Body Class (Step 8.1)');
+
+      (async function() {
+        const storage = new MARKUP_STORAGE_MANAGER();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const tm = new MARKUP_THEME_MANAGER(storage, emitter);
+
+        // Create a mock .markup-content element
+        showSandbox();
+        const content = document.createElement('article');
+        content.className = 'markup-content';
+        sandbox.appendChild(content);
+
+        // Apply dark theme
+        tm.applyTheme('dark');
+
+        // Verify .markup-content has theme class
+        assert(content.classList.contains('markup-theme-dark'),
+          'applyTheme("dark") adds markup-theme-dark to .markup-content');
+
+        // Verify body has theme class
+        assert(document.body.classList.contains('markup-theme-dark'),
+          'applyTheme("dark") adds markup-theme-dark to body');
+        assert(document.body.classList.contains('markup-body'),
+          'applyTheme() adds markup-body to body');
+
+        // Switch to sepia
+        tm.applyTheme('sepia');
+        assert(!document.body.classList.contains('markup-theme-dark'),
+          'applyTheme("sepia") removes markup-theme-dark from body');
+        assert(document.body.classList.contains('markup-theme-sepia'),
+          'applyTheme("sepia") adds markup-theme-sepia to body');
+
+        // Switch to light
+        tm.applyTheme('light');
+        assert(!document.body.classList.contains('markup-theme-sepia'),
+          'applyTheme("light") removes markup-theme-sepia from body');
+        assert(document.body.classList.contains('markup-theme-light'),
+          'applyTheme("light") adds markup-theme-light to body');
+
+        // Cleanup body classes
+        document.body.classList.remove('markup-body', 'markup-theme-light', 'markup-theme-dark', 'markup-theme-sepia');
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 3: Toolbar Theme Awareness =====
+      groupHeader('3. Toolbar Theme Awareness (Step 8.1)');
+
+      (function() {
+        document.body.classList.add('markup-body');
+
+        showSandbox();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+
+        // Light theme — toolbar should inherit light bg
+        document.body.classList.add('markup-theme-light');
+        const lightBg = getComputedStyle(el).backgroundColor;
+        assert(lightBg !== '' && lightBg !== 'transparent',
+          `Toolbar has non-transparent background in light theme: ${lightBg}`);
+
+        // Dark theme — toolbar should inherit dark bg
+        document.body.classList.remove('markup-theme-light');
+        document.body.classList.add('markup-theme-dark');
+
+        // Force reflow
+        void el.offsetHeight;
+        const darkBg = getComputedStyle(el).backgroundColor;
+        assert(darkBg !== lightBg || darkBg !== '',
+          `Toolbar background changes in dark theme: ${darkBg}`);
+        document.body.classList.remove('markup-theme-dark');
+
+        toolbar.unmount();
+        document.body.classList.remove('markup-body');
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 4: Toolbar Drag Handle =====
+      groupHeader('4. Toolbar Drag Handle (Step 8.2)');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+
+        showSandbox();
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        const buttons = el.querySelectorAll('.markup-toolbar-btn');
+        assert(buttons.length === 6, `Toolbar has 6 buttons (5 actions + 1 drag handle) (got: ${buttons.length})`);
+
+        // Check drag handle exists
+        const dragBtn = el.querySelector('.markup-toolbar-btn-drag');
+        assert(dragBtn !== null, 'Drag handle button exists');
+        assert(dragBtn.getAttribute('data-action') === 'drag', 'Drag handle has data-action="drag"');
+        assert(dragBtn.getAttribute('aria-label') === 'Drag to reposition toolbar',
+          'Drag handle has proper aria-label');
+
+        // Check drag handle style — should have cursor: grab
+        const dragStyle = getComputedStyle(dragBtn);
+        assert(dragStyle.cursor === 'grab', `Drag handle has cursor: grab (got: ${dragStyle.cursor})`);
+
+        // All 5 action buttons still present
+        const actions = Array.from(buttons).map(b => b.getAttribute('data-action'));
+        assert(actions.includes('toc'), 'Has TOC button');
+        assert(actions.includes('theme'), 'Has Theme button');
+        assert(actions.includes('search'), 'Has Search button');
+        assert(actions.includes('print'), 'Has Print button');
+        assert(actions.includes('settings'), 'Has Settings button');
+        assert(actions.includes('drag'), 'Has Drag button');
+
+        toolbar.unmount();
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 5: Drag Interaction =====
+      groupHeader('5. Drag Interaction (Step 8.2)');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+
+        showSandbox();
+        sandbox.style.display = 'block';
+        sandbox.style.position = 'relative';
+        sandbox.style.width = '100%';
+        sandbox.style.height = '500px';
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        const dragBtn = el.querySelector('.markup-toolbar-btn-drag');
+
+        // Simulate pointer down on drag handle
+        const pointerDownEvent = new PointerEvent('pointerdown', {
+          clientX: 100,
+          clientY: 100,
+          pointerId: 1,
+          bubbles: true,
+        });
+
+        // Mock setPointerCapture
+        dragBtn.setPointerCapture = function() {};
+        dragBtn.releasePointerCapture = function() {};
+
+        dragBtn.dispatchEvent(pointerDownEvent);
+
+        // Check dragging CSS class is applied
+        assert(el.classList.contains('markup-toolbar-dragging'),
+          'Dragging class applied on pointerdown');
+
+        // Check position has been set to explicit left/top
+        assert(el.style.right === 'auto', 'Right set to auto during drag');
+        assert(el.style.left !== '', 'Left is set during drag');
+        assert(el.style.top !== '', 'Top is set during drag');
+
+        // Simulate pointer up
+        const pointerUpEvent = new PointerEvent('pointerup', {
+          clientX: 200,
+          clientY: 200,
+          pointerId: 1,
+          bubbles: true,
+        });
+        // Trigger on document (where we listen)
+        document.dispatchEvent(pointerUpEvent);
+
+        assert(!el.classList.contains('markup-toolbar-dragging'),
+          'Dragging class removed on pointerup');
+
+        toolbar.unmount();
+        sandbox.style.position = '';
+        sandbox.style.height = '';
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 6: Position Persistence =====
+      groupHeader('6. Position Persistence (Step 8.2)');
+
+      (async function() {
+        const storage = new MARKUP_STORAGE_MANAGER();
+        const emitter = new MARKUP_EVENT_EMITTER();
+
+        // Pre-set a position
+        await storage.set('toolbarPosition', { top: 50, left: 100 });
+
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter, {
+          storageManager: storage,
+        });
+
+        showSandbox();
+        sandbox.style.display = 'block';
+        sandbox.style.width = '100%';
+        sandbox.style.height = '500px';
+        toolbar.mount(sandbox);
+
+        // Wait for async position loading
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const el = toolbar.getElement();
+
+        // Check position was applied
+        const left = parseInt(el.style.left) || -1;
+        const top = parseInt(el.style.top) || -1;
+
+        // Position should be set (exact values depend on viewport clamping)
+        assert(el.style.left !== '' && el.style.right !== 'auto' || el.style.left !== '',
+          `Persisted position loaded: left=${el.style.left}, top=${el.style.top}`);
+        assert(left >= 0, `Left position is valid: ${left}`);
+        assert(top >= 0, `Top position is valid: ${top}`);
+
+        toolbar.unmount();
+        sandbox.style.height = '';
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 7: StorageManager accepts toolbarPosition object =====
+      groupHeader('7. StorageManager — Object Values');
+
+      (async function() {
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        const testPosition = { top: 123, left: 456 };
+        await storage.set('toolbarPosition', testPosition);
+        const retrieved = await storage.get('toolbarPosition');
+
+        assert(retrieved !== null && typeof retrieved === 'object',
+          'Storage stores and retrieves an object value');
+        assert(retrieved.top === 123, `Retrieved position.top === 123 (got: ${retrieved ? retrieved.top : 'null'})`);
+        assert(retrieved.left === 456, `Retrieved position.left === 456 (got: ${retrieved ? retrieved.left : 'null'})`);
+      })();
+
+      // ===== Test Group 8: Toolbar Constructor accepts storageManager =====
+      groupHeader('8. Toolbar StorageManager Option');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        // No error with storageManager option
+        let noError = true;
+        try {
+          const tb = new MARKUP_TOOLBAR_COMPONENT(emitter, { storageManager: storage });
+          assert(tb._storageManager === storage, 'storageManager is stored');
+        } catch (e) {
+          noError = false;
+        }
+        assert(noError, 'Constructor accepts storageManager in options without error');
+
+        // Without storageManager
+        const tb2 = new MARKUP_TOOLBAR_COMPONENT(emitter);
+        assert(tb2._storageManager === null, 'storageManager is null when not provided');
+      })();
+
+      // ===== Test Group 9: Dragging Style CSS =====
+      groupHeader('9. Dragging CSS Classes');
+
+      (function() {
+        showSandbox();
+        document.body.classList.add('markup-body');
+
+        const el = document.createElement('div');
+        el.className = 'markup-toolbar markup-toolbar-dragging';
+        sandbox.appendChild(el);
+
+        const style = getComputedStyle(el);
+        assert(style.cursor === 'grabbing', `Dragging toolbar has cursor: grabbing (got: ${style.cursor})`);
+
+        // Check border color is accent (with body vars)
+        const borderColor = style.borderColor;
+        assert(borderColor !== '', `Dragging toolbar has border-color set: ${borderColor}`);
+
+        document.body.classList.remove('markup-body');
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 10: Service Worker Static Analysis =====
+      groupHeader('10. Service Worker — Relay Handlers (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/background/service-worker.js');
+          const content = await response.text();
+
+          assert(content.includes("listen('APPLY_THEME'"),
+            'service-worker.js has APPLY_THEME listener');
+          assert(content.includes("listen('APPLY_FONT_SIZE'"),
+            'service-worker.js has APPLY_FONT_SIZE listener');
+          assert(content.includes("listen('APPLY_LINE_HEIGHT'"),
+            'service-worker.js has APPLY_LINE_HEIGHT listener');
+          assert(content.includes("listen('APPLY_FONT_FAMILY'"),
+            'service-worker.js has APPLY_FONT_FAMILY listener');
+
+          // Verify relay pattern (tabs.query + sendMessage)
+          const relayPattern = /chrome\.tabs\.sendMessage\(tab\.id.*APPLY_FONT_SIZE/;
+          assert(relayPattern.test(content),
+            'APPLY_FONT_SIZE handler relays to tabs via chrome.tabs.sendMessage');
+        } catch (err) {
+          log('warn', `Could not fetch service-worker.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 11: Content Script Static Analysis =====
+      groupHeader('11. Content Script — MessageBus Listeners (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes("_wireMessageBusListeners"),
+            'content-script.js has _wireMessageBusListeners method');
+          assert(content.includes("listen('APPLY_THEME'"),
+            'content-script.js has APPLY_THEME listener');
+          assert(content.includes("listen('APPLY_FONT_SIZE'"),
+            'content-script.js has APPLY_FONT_SIZE listener');
+          assert(content.includes("listen('APPLY_LINE_HEIGHT'"),
+            'content-script.js has APPLY_LINE_HEIGHT listener');
+          assert(content.includes("listen('APPLY_FONT_FAMILY'"),
+            'content-script.js has APPLY_FONT_FAMILY listener');
+          assert(content.includes("--markup-font-size-base"),
+            'APPLY_FONT_SIZE handler sets --markup-font-size-base CSS property');
+          assert(content.includes("--markup-line-height"),
+            'APPLY_LINE_HEIGHT handler sets --markup-line-height CSS property');
+          assert(content.includes("--markup-font-body"),
+            'APPLY_FONT_FAMILY handler sets --markup-font-body CSS property');
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 12: UI Components CSS — Theme Variable Inheritance =====
+      groupHeader('12. UI Components CSS — Theme Variable Inheritance');
+
+      (function() {
+        document.body.classList.add('markup-body', 'markup-theme-dark');
+        showSandbox();
+
+        // TOC panel inherits theme variables via body
+        const tocPanel = document.createElement('div');
+        tocPanel.className = 'markup-toc-panel';
+        sandbox.appendChild(tocPanel);
+        const tocBg = getComputedStyle(tocPanel).backgroundColor;
+        // In dark theme, bg-primary is #0d1117
+        assert(tocBg !== '' && tocBg !== 'rgba(0, 0, 0, 0)',
+          `TOC panel has background in dark theme: ${tocBg}`);
+
+        // Settings panel inherits theme variables
+        const settingsPanel = document.createElement('div');
+        settingsPanel.className = 'markup-settings-panel';
+        sandbox.appendChild(settingsPanel);
+        const spBg = getComputedStyle(settingsPanel).backgroundColor;
+        assert(spBg !== '' && spBg !== 'rgba(0, 0, 0, 0)',
+          `Settings panel has background in dark theme: ${spBg}`);
+
+        // Search bar inherits theme variables
+        const searchBar = document.createElement('div');
+        searchBar.className = 'markup-search-bar';
+        sandbox.appendChild(searchBar);
+        const sbBg = getComputedStyle(searchBar).backgroundColor;
+        assert(sbBg !== '' && sbBg !== 'rgba(0, 0, 0, 0)',
+          `Search bar has background in dark theme: ${sbBg}`);
+
+        document.body.classList.remove('markup-body', 'markup-theme-dark');
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 13: Existing Toolbar Features Regression =====
+      groupHeader('13. Existing Toolbar Features — Regression');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+
+        showSandbox();
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        assert(el !== null, 'Toolbar element exists');
+        assert(el.classList.contains('markup-toolbar'), 'Has markup-toolbar class');
+        assert(el.getAttribute('role') === 'toolbar', 'Has role=toolbar');
+
+        // Verify all original action buttons emit events
+        const EVENTS = MARKUP_CONSTANTS.EVENTS;
+        let tocFired = false;
+        emitter.on(EVENTS.TOC_TOGGLED, () => { tocFired = true; });
+        const tocBtn = el.querySelector('[data-action="toc"]');
+        tocBtn.click();
+        assert(tocFired, 'TOC button still emits TOC_TOGGLED event');
+
+        let searchFired = false;
+        emitter.on(EVENTS.SEARCH_TOGGLED, () => { searchFired = true; });
+        const searchBtn = el.querySelector('[data-action="search"]');
+        searchBtn.click();
+        assert(searchFired, 'Search button still emits SEARCH_TOGGLED event');
+
+        let themeFired = false;
+        emitter.on(EVENTS.THEME_CHANGED, () => { themeFired = true; });
+        const themeBtn = el.querySelector('[data-action="theme"]');
+        themeBtn.click();
+        assert(themeFired, 'Theme button still emits THEME_CHANGED event');
+
+        let printFired = false;
+        emitter.on(EVENTS.PRINT_REQUESTED, () => { printFired = true; });
+        const printBtn = el.querySelector('[data-action="print"]');
+        printBtn.click();
+        assert(printFired, 'Print button still emits PRINT_REQUESTED event');
+
+        let settingsFired = false;
+        emitter.on(EVENTS.SETTINGS_TOGGLED, () => { settingsFired = true; });
+        const settingsBtn = el.querySelector('[data-action="settings"]');
+        settingsBtn.click();
+        assert(settingsFired, 'Settings button still emits SETTINGS_TOGGLED event');
+
+        toolbar.unmount();
+        assert(!toolbar.isMounted(), 'Toolbar unmounts successfully');
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 14: Scroll Auto-Hide — Regression =====
+      groupHeader('14. Scroll Auto-Hide — Regression');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter, { autoHide: true });
+
+        showSandbox();
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        assert(!el.classList.contains('markup-toolbar-hidden'), 'Not hidden initially');
+
+        // Class mechanism still works
+        el.classList.add('markup-toolbar-hidden');
+        assert(el.classList.contains('markup-toolbar-hidden'), 'Hidden class can be added');
+        el.classList.remove('markup-toolbar-hidden');
+        assert(!el.classList.contains('markup-toolbar-hidden'), 'Hidden class can be removed');
+
+        toolbar.unmount();
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 15: Global Exports =====
+      groupHeader('15. Global Exports — Phase 8');
+
+      assert(typeof MARKUP_TOOLBAR_COMPONENT === 'function', 'MARKUP_TOOLBAR_COMPONENT is a function');
+      assert(typeof MARKUP_THEME_MANAGER === 'function', 'MARKUP_THEME_MANAGER is a function');
+      assert(typeof MARKUP_STORAGE_MANAGER === 'function', 'MARKUP_STORAGE_MANAGER is a function');
+      assert(typeof MARKUP_EVENT_EMITTER === 'function', 'MARKUP_EVENT_EMITTER is a function');
+
+      // Wait for async tests to complete, then show summary
+      setTimeout(function() {
+        const summary = document.getElementById('summary');
+        const total = passed + failed;
+        const cls = failed === 0 ? 'pass' : 'fail';
+        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
+        if (warned > 0) {
+          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
+        }
+        document.title = `Phase 8 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>

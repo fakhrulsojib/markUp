@@ -20,32 +20,24 @@
   gap: 6px;
   padding: 8px;
   border-radius: var(--markup-radius-lg, 8px);
-  background: rgba(255, 255, 255, 0.85);
+  background-color: var(--markup-bg-primary, #ffffff);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--markup-border, #d0d7de);
   box-shadow: var(--markup-shadow-md, 0 4px 12px rgba(0, 0, 0, 0.1));
-  transition: opacity 300ms ease, transform 300ms ease;
+  transition: opacity 300ms ease, transform 300ms ease, background-color 300ms ease, border-color 300ms ease;
   opacity: 1;
   transform: translateY(0);
 }
 
-/* Dark theme toolbar */
-.markup-theme-dark .markup-toolbar {
-  background: rgba(22, 27, 34, 0.88);
-  border-color: var(--markup-border, #30363d);
-}
-
-/* Sepia theme toolbar */
-.markup-theme-sepia .markup-toolbar {
-  background: rgba(244, 236, 216, 0.90);
-  border-color: var(--markup-border, #d4c5a9);
-}
-
 .markup-toolbar-hidden {
-  opacity: 0;
-  transform: translateY(-20px);
-  pointer-events: none;
+  opacity: 0.3;
+  transform: translateY(-8px);
+}
+
+.markup-toolbar-hidden:hover {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .markup-toolbar-btn {
@@ -60,7 +52,7 @@
   color: var(--markup-text-primary, #24292f);
   font-size: 18px;
   cursor: pointer;
-  transition: background-color 150ms ease, transform 150ms ease;
+  transition: background-color 150ms ease, transform 150ms ease, color 150ms ease;
   padding: 0;
   line-height: 1;
 }
@@ -77,6 +69,33 @@
 .markup-toolbar-btn:focus-visible {
   outline: 2px solid var(--markup-accent, #0969da);
   outline-offset: 2px;
+}
+
+/* Drag handle button */
+.markup-toolbar-btn-drag {
+  cursor: grab;
+  font-size: 14px;
+  color: var(--markup-text-secondary, #656d76);
+  border-top: 1px solid var(--markup-border, #d0d7de);
+  margin-top: 2px;
+  padding-top: 4px;
+  border-radius: 0 0 var(--markup-radius-md, 6px) var(--markup-radius-md, 6px);
+}
+
+.markup-toolbar-btn-drag:hover {
+  color: var(--markup-text-primary, #24292f);
+}
+
+/* Toolbar in drag mode */
+.markup-toolbar-dragging {
+  opacity: 0.85;
+  border-color: var(--markup-accent, #0969da);
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.25), var(--markup-shadow-md, 0 4px 12px rgba(0, 0, 0, 0.1));
+  cursor: grabbing;
+}
+
+.markup-toolbar-dragging .markup-toolbar-btn-drag {
+  cursor: grabbing;
 }
 
 

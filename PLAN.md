@@ -1,8 +1,8 @@
 # PLAN.md — MarkUp: Chrome Extension Markdown Reader
 
-> **Status:** v0.1.0 — Released  
-> **Version:** 0.1.0  
-> **Last Updated:** 2026-04-12  
+> **Status:** v0.2.0 — Phase 8 Complete  
+> **Version:** 0.2.0  
+> **Last Updated:** 2026-04-13  
 
 ---
 
@@ -993,7 +993,7 @@ classDiagram
 
 ## 8. Future Roadmap
 
-### Phase 8: UI Refinements & Live Settings (Future)
+### Phase 8: UI Refinements & Live Settings ✅ Done
 
 #### Step 8.1 — Theme-Aware UI Panels & Toolbar
 
@@ -1026,5 +1026,5 @@ classDiagram
 
 ---
 
-> **End of PLAN.md — v0.1.0 Released | Phase 8 Planned**
+> **End of PLAN.md — v0.2.0 Released | Phase 8 Done**
 
