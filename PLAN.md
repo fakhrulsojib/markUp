@@ -991,4 +991,40 @@ classDiagram
 
 ---
 
-> **End of PLAN.md — v0.1.0 Released**
+## 8. Future Roadmap
+
+### Phase 8: UI Refinements & Live Settings (Future)
+
+#### Step 8.1 — Theme-Aware UI Panels & Toolbar
+
+- The **TOC panel** (left sidebar), **Settings panel** (right sidebar), and the **floating toolbar** (vertical bar with TOC toggler, theme toggler, search, print, settings buttons) must all follow the active theme.
+- Currently these UI elements use static colours. They should read from the CSS custom properties defined in `variables.css` and the active theme stylesheet (`light.css`, `dark.css`, `sepia.css`).
+- When the user switches theme, the toolbar, TOC panel, and Settings panel must update their backgrounds, text colours, borders, and button states in real‑time — matching the same palette as the rendered content area.
+
+> ✅ **Verify:** Switch to Dark theme → toolbar background, button icons, TOC sidebar, and Settings sidebar all use dark‑theme colours. Same for Sepia. No element remains in a different theme from the content.
+
+#### Step 8.2 — Draggable Toolbar
+
+- Add a **drag handle button** below the Settings button on the floating toolbar (the vertical bar).
+- Clicking/pressing the drag handle puts the toolbar into "move mode" — the user can then drag the toolbar to any position on the screen.
+- The toolbar's new position should be persisted via `StorageManager` (key: `markup_toolbarPosition`) so it survives page refreshes.
+- While dragging, the toolbar should have a subtle visual indicator (e.g., slight opacity change, border highlight).
+- After releasing, the toolbar snaps to the new position and saves it.
+
+> ✅ **Verify:** Click drag handle → toolbar becomes draggable. Move to bottom‑left → refresh page → toolbar appears at bottom‑left. Move back to top‑right → persists.
+
+#### Step 8.3 — Live Settings Application (Fix: Options/Popup Changes Not Reflected Until Refresh)
+
+- **Bug:** When the user changes settings via the popup or options page (e.g., theme, font size, font family), the changes are persisted to `chrome.storage` but are **not reflected on the currently open Markdown tab** until the user manually refreshes.
+- **Fix:** After any setting change in popup or options page:
+  1. The popup/options `MessageBus.send()` call must target the **active tab's content script** (not just broadcast to the service worker).
+  2. The service worker's relay handler (`APPLY_THEME`, `APPLY_FONT_SIZE`, `APPLY_LINE_HEIGHT`, `APPLY_FONT_FAMILY`) must use `chrome.tabs.sendMessage(tabId, ...)` to send the change to each open Markdown tab.
+  3. The content script's `MessageBus` must have listeners for each of these actions that call the corresponding manager method (e.g., `ThemeManager.applyTheme()`, update CSS custom properties for font size/line height/family) **immediately** without requiring a page refresh.
+- This requires wiring `MessageBus.listen()` handlers in the content script's `MarkUpApp` for: `APPLY_THEME`, `APPLY_FONT_SIZE`, `APPLY_LINE_HEIGHT`, `APPLY_FONT_FAMILY`.
+
+> ✅ **Verify:** Open a `.md` file. Open popup or options page. Change theme → the open `.md` file immediately updates. Change font size → text resizes live. No refresh needed.
+
+---
+
+> **End of PLAN.md — v0.1.0 Released | Phase 8 Planned**
+
