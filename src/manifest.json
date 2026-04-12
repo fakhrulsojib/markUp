@@ -63,6 +63,7 @@
         "core/SearchController.js",
         "core/PrintManager.js",
         "core/KeyboardManager.js",
+        "core/MessageBus.js",
         "ui/BaseComponent.js",
         "ui/ToolbarComponent.js",
         "ui/TocPanelComponent.js",
