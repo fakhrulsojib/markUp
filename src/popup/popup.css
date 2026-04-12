@@ -1,0 +1,289 @@
+/**
+ * MarkUp — Popup Styles
+ *
+ * Compact, clean styling for the 320px-wide Chrome extension popup.
+ * Follows the MarkUp design language with system fonts and subtle styling.
+ */
+
+/* --- Reset & Base --- */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  color: #24292f;
+  background-color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Header --- */
+
+#markup-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.markup-popup-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.markup-popup-logo img {
+  border-radius: 4px;
+}
+
+.markup-popup-logo h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #24292f;
+  letter-spacing: -0.02em;
+}
+
+.markup-popup-version {
+  font-size: 11px;
+  color: #656d76;
+  background: #f6f8fa;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+/* --- Sections --- */
+
+.markup-popup-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.markup-popup-section h2 {
+  font-size: 11px;
+  font-weight: 600;
+  color: #656d76;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+/* --- Theme Quick Switch --- */
+
+.markup-popup-theme-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.markup-theme-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #f6f8fa;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.markup-theme-btn:hover {
+  background: #eaeef2;
+  border-color: #a3aab2;
+}
+
+.markup-theme-btn:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 1px;
+}
+
+.markup-theme-btn.active {
+  border-color: #0969da;
+  background: #ddf4ff;
+  box-shadow: 0 0 0 1px #0969da;
+}
+
+.markup-theme-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.markup-theme-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #24292f;
+}
+
+/* --- Toggle Switches --- */
+
+.markup-popup-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.markup-popup-toggle-row label {
+  font-size: 13px;
+  color: #24292f;
+  cursor: pointer;
+}
+
+.markup-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  background: #afb8c1;
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.markup-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.markup-toggle:checked {
+  background: #0969da;
+}
+
+.markup-toggle:checked::after {
+  transform: translateX(16px);
+}
+
+.markup-toggle:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 1px;
+}
+
+/* --- Recent Files --- */
+
+.markup-popup-recent-list {
+  list-style: none;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.markup-popup-recent-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid #eaeef2;
+}
+
+.markup-popup-recent-list li:last-child {
+  border-bottom: none;
+}
+
+.markup-recent-empty {
+  color: #656d76;
+  font-style: italic;
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.markup-recent-link {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: #24292f;
+  transition: color 0.15s ease;
+}
+
+.markup-recent-link:hover {
+  color: #0969da;
+}
+
+.markup-recent-link:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.markup-recent-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.markup-recent-url {
+  font-size: 11px;
+  color: #656d76;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.markup-recent-time {
+  font-size: 10px;
+  color: #8b949e;
+  margin-top: 2px;
+}
+
+/* --- Footer --- */
+
+#markup-popup-footer {
+  padding: 10px 16px;
+  text-align: center;
+}
+
+#markup-open-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #0969da;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+#markup-open-options:hover {
+  background: #f6f8fa;
+}
+
+#markup-open-options:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 1px;
+}
+
+/* --- Scrollbar --- */
+
+.markup-popup-recent-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.markup-popup-recent-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markup-popup-recent-list::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 2px;
+}

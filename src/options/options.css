@@ -1,0 +1,331 @@
+/**
+ * MarkUp — Options Page Styles
+ *
+ * Full-page settings UI matching the MarkUp design language.
+ * Clean, organized sections with responsive layout.
+ */
+
+/* --- Reset & Base --- */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  color: #24292f;
+  background-color: #f6f8fa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* --- Container --- */
+
+#markup-options-container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+/* --- Header --- */
+
+#markup-options-header {
+  margin-bottom: 20px;
+}
+
+.markup-options-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.markup-options-logo img {
+  border-radius: 8px;
+}
+
+.markup-options-logo h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #24292f;
+  letter-spacing: -0.02em;
+}
+
+.markup-options-subtitle {
+  font-size: 13px;
+  color: #656d76;
+  margin-top: 2px;
+}
+
+/* --- Status Bar --- */
+
+.markup-options-status {
+  background: #dafbe1;
+  color: #1a7f37;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 16px;
+  text-align: center;
+  transition: opacity 0.3s ease;
+}
+
+.markup-options-status.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.markup-options-status.visible {
+  opacity: 1;
+}
+
+/* --- Sections --- */
+
+.markup-options-section {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.markup-options-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eaeef2;
+}
+
+/* --- Fields --- */
+
+.markup-options-field {
+  margin-bottom: 16px;
+}
+
+.markup-options-field:last-child {
+  margin-bottom: 0;
+}
+
+.markup-options-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #24292f;
+  margin-bottom: 6px;
+}
+
+/* --- Select --- */
+
+.markup-options-select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #24292f;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  appearance: auto;
+}
+
+.markup-options-select:hover {
+  border-color: #a3aab2;
+}
+
+.markup-options-select:focus {
+  outline: none;
+  border-color: #0969da;
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
+}
+
+/* --- Range Slider --- */
+
+.markup-options-range {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #d0d7de;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.markup-options-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #0969da;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+
+.markup-options-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.markup-options-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #0969da;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.markup-options-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+
+/* --- Text Input --- */
+
+.markup-options-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #24292f;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.markup-options-input:hover {
+  border-color: #a3aab2;
+}
+
+.markup-options-input:focus {
+  outline: none;
+  border-color: #0969da;
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
+}
+
+/* --- Toggle Switches --- */
+
+.markup-options-toggle-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.markup-options-toggle-field label {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.markup-options-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 40px;
+  height: 22px;
+  background: #afb8c1;
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.markup-options-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.markup-options-toggle:checked {
+  background: #0969da;
+}
+
+.markup-options-toggle:checked::after {
+  transform: translateX(18px);
+}
+
+.markup-options-toggle:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 2px;
+}
+
+/* --- About --- */
+
+.markup-about-info {
+  margin-bottom: 12px;
+}
+
+.markup-about-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #eaeef2;
+}
+
+.markup-about-row:last-child {
+  border-bottom: none;
+}
+
+.markup-about-label {
+  font-size: 13px;
+  color: #656d76;
+}
+
+.markup-about-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #24292f;
+}
+
+.markup-about-credits {
+  font-size: 12px;
+  color: #656d76;
+  text-align: center;
+  padding-top: 8px;
+}
+
+/* --- Footer --- */
+
+#markup-options-footer {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.markup-options-reset-btn {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  color: #cf222e;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.markup-options-reset-btn:hover {
+  background: #ffebe9;
+  border-color: #cf222e;
+}
+
+.markup-options-reset-btn:focus-visible {
+  outline: 2px solid #cf222e;
+  outline-offset: 2px;
+}

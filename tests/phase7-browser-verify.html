@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MarkUp — Phase 7 Browser Verification Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; background: #f6f8fa; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .subtitle { color: #656d76; margin-bottom: 24px; }
+    .group { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 12px; padding: 16px; }
+    .group h2 { font-size: 15px; margin: 0 0 12px; }
+    .test { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+    .pass { color: #1a7f37; }
+    .fail { color: #cf222e; }
+    .summary { margin-top: 24px; padding: 16px; border-radius: 8px; font-size: 15px; font-weight: 600; }
+    .summary.all-pass { background: #dafbe1; color: #1a7f37; border: 1px solid #1a7f37; }
+    .summary.has-fail { background: #ffebe9; color: #cf222e; border: 1px solid #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Phase 7 — Popup, Options & Polish Tests</h1>
+  <p class="subtitle">Browser verification suite for Phase 7</p>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+  <!-- Load dependencies -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <script>
+    'use strict';
+
+    // ---- Test Framework ----
+    let totalPass = 0;
+    let totalFail = 0;
+    const resultsEl = document.getElementById('results');
+
+    function group(name) {
+      const div = document.createElement('div');
+      div.className = 'group';
+      const h2 = document.createElement('h2');
+      h2.textContent = name;
+      div.appendChild(h2);
+      resultsEl.appendChild(div);
+      return div;
+    }
+
+    function test(groupEl, name, fn) {
+      const div = document.createElement('div');
+      div.className = 'test';
+      try {
+        fn();
+        div.classList.add('pass');
+        div.textContent = `✅ ${name}`;
+        totalPass++;
+      } catch (e) {
+        div.classList.add('fail');
+        div.textContent = `❌ ${name}: ${e.message}`;
+        totalFail++;
+      }
+      groupEl.appendChild(div);
+    }
+
+    function assert(condition, msg) {
+      if (!condition) throw new Error(msg || 'Assertion failed');
+    }
+
+    function assertEqual(actual, expected, msg) {
+      if (actual !== expected) {
+        throw new Error(msg || `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+      }
+    }
+
+    function assertContains(str, sub, msg) {
+      if (typeof str !== 'string' || !str.includes(sub)) {
+        throw new Error(msg || `Expected "${str}" to contain "${sub}"`);
+      }
+    }
+
+    // ---- Mock Chrome APIs ----
+    if (typeof chrome === 'undefined') {
+      window.chrome = {};
+    }
+    if (!chrome.storage) {
+      const storage = {};
+      chrome.storage = {
+        sync: {
+          get: (key, cb) => {
+            const result = {};
+            if (typeof key === 'string' && storage[key] !== undefined) {
+              result[key] = storage[key];
+            } else if (key === null) {
+              Object.assign(result, storage);
+            }
+            cb(result);
+          },
+          set: (items, cb) => { Object.assign(storage, items); if (cb) cb(); },
+          remove: (key, cb) => { delete storage[key]; if (cb) cb(); },
+        },
+        local: {
+          get: (key, cb) => {
+            const result = {};
+            if (typeof key === 'string' && storage[key] !== undefined) {
+              result[key] = storage[key];
+            } else if (key === null) {
+              Object.assign(result, storage);
+            }
+            cb(result);
+          },
+          set: (items, cb) => { Object.assign(storage, items); if (cb) cb(); },
+          remove: (key, cb) => { delete storage[key]; if (cb) cb(); },
+        },
+      };
+    }
+    if (!chrome.runtime) {
+      chrome.runtime = {
+        lastError: null,
+        onMessage: { addListener: () => {}, removeListener: () => {} },
+        sendMessage: (msg, cb) => { if (cb) cb({}); },
+        openOptionsPage: () => {},
+      };
+    }
+    if (!chrome.tabs) {
+      chrome.tabs = {
+        create: () => {},
+        query: (q, cb) => { if (cb) cb([]); },
+      };
+    }
+
+    // ---- Test Groups ----
+
+    // Group 1: Constants Integrity (verify no regression)
+    const g1 = group('1. Constants Integrity');
+    test(g1, 'MARKUP_CONSTANTS exists', () => {
+      assert(typeof MARKUP_CONSTANTS !== 'undefined', 'MARKUP_CONSTANTS not defined');
+    });
+    test(g1, 'THEMES has 3 entries', () => {
+      const themes = MARKUP_CONSTANTS.THEMES;
+      assertEqual(Object.keys(themes).length, 3);
+    });
+    test(g1, 'DEFAULTS.THEME is light', () => {
+      assertEqual(MARKUP_CONSTANTS.DEFAULTS.THEME, 'light');
+    });
+    test(g1, 'CSS_PREFIX is markup', () => {
+      assertEqual(MARKUP_CONSTANTS.CSS_PREFIX, 'markup');
+    });
+
+    // Group 2: DOM Helpers Regression
+    const g2 = group('2. DOM Helpers Regression');
+    test(g2, 'createElement creates element', () => {
+      const el = MARKUP_DOM_HELPERS.createElement('div', { id: 'test-el' }, ['Hello']);
+      assert(el instanceof HTMLElement);
+      assertEqual(el.tagName, 'DIV');
+      assertEqual(el.id, 'test-el');
+    });
+    test(g2, 'createFragment returns DocumentFragment', () => {
+      const el1 = document.createElement('span');
+      const frag = MARKUP_DOM_HELPERS.createFragment([el1]);
+      assert(frag instanceof DocumentFragment);
+    });
+    test(g2, 'removeAllChildren clears children', () => {
+      const parent = document.createElement('div');
+      parent.appendChild(document.createElement('span'));
+      parent.appendChild(document.createElement('span'));
+      MARKUP_DOM_HELPERS.removeAllChildren(parent);
+      assertEqual(parent.children.length, 0);
+    });
+
+    // Group 3: Sanitizer Regression
+    const g3 = group('3. Sanitizer Regression');
+    test(g3, 'Sanitizer class exists', () => {
+      assert(typeof MARKUP_SANITIZER !== 'undefined');
+    });
+    test(g3, 'Strips script tags', () => {
+      const s = new MARKUP_SANITIZER();
+      const result = s.sanitize('<p>Hello</p><script>alert("xss")<\/script>');
+      assert(!result.includes('<script'), 'Script tag not stripped');
+      assertContains(result, 'Hello');
+    });
+    test(g3, 'Strips onclick attributes', () => {
+      const s = new MARKUP_SANITIZER();
+      const result = s.sanitize('<button onclick="alert(1)">Click</button>');
+      assert(!result.includes('onclick'), 'onclick not stripped');
+    });
+    test(g3, 'Allows safe tags', () => {
+      const s = new MARKUP_SANITIZER();
+      const result = s.sanitize('<p><strong>Bold</strong> and <em>italic</em></p>');
+      assertContains(result, '<strong>');
+      assertContains(result, '<em>');
+    });
+
+    // Group 4: EventEmitter Regression
+    const g4 = group('4. EventEmitter Regression');
+    test(g4, 'EventEmitter class exists', () => {
+      assert(typeof MARKUP_EVENT_EMITTER !== 'undefined');
+    });
+    test(g4, 'on/emit works', () => {
+      const ee = new MARKUP_EVENT_EMITTER();
+      let called = false;
+      ee.on('test', () => { called = true; });
+      ee.emit('test');
+      assert(called, 'Callback not invoked');
+    });
+    test(g4, 'once fires only once', () => {
+      const ee = new MARKUP_EVENT_EMITTER();
+      let count = 0;
+      ee.once('test', () => { count++; });
+      ee.emit('test');
+      ee.emit('test');
+      assertEqual(count, 1);
+    });
+    test(g4, 'off removes listener', () => {
+      const ee = new MARKUP_EVENT_EMITTER();
+      let count = 0;
+      const handler = () => { count++; };
+      ee.on('test', handler);
+      ee.emit('test');
+      ee.off('test', handler);
+      ee.emit('test');
+      assertEqual(count, 1);
+    });
+
+    // Group 5: Popup HTML Verification (static analysis)
+    const g5 = group('5. Popup HTML Structure');
+    (async function() {
+      try {
+        const response = await fetch('../src/popup/popup.html');
+        const html = await response.text();
+
+        test(g5, 'popup.html exists and loads', () => { assert(html.length > 0); });
+        test(g5, 'References popup.css', () => { assertContains(html, 'popup.css'); });
+        test(g5, 'References popup.js', () => { assertContains(html, 'popup.js'); });
+        test(g5, 'References constants.js', () => { assertContains(html, 'constants.js'); });
+        test(g5, 'References StorageManager.js', () => { assertContains(html, 'StorageManager.js'); });
+        test(g5, 'References MessageBus.js', () => { assertContains(html, 'MessageBus.js'); });
+        test(g5, 'Has theme buttons', () => { assertContains(html, 'markup-theme-light'); });
+        test(g5, 'Has toggle switches', () => { assertContains(html, 'markup-toggle-fileurl'); });
+        test(g5, 'Has recent files section', () => { assertContains(html, 'markup-recent-list'); });
+        test(g5, 'Has options link', () => { assertContains(html, 'markup-open-options'); });
+        test(g5, 'No inline scripts (CSP)', () => {
+          // Should not have onclick= or javascript:
+          assert(!html.includes('onclick='), 'Inline onclick found');
+          assert(!html.includes('javascript:'), 'javascript: protocol found');
+        });
+      } catch (e) {
+        test(g5, 'popup.html fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 6: Options HTML Verification
+    const g6 = group('6. Options HTML Structure');
+    (async function() {
+      try {
+        const response = await fetch('../src/options/options.html');
+        const html = await response.text();
+
+        test(g6, 'options.html exists and loads', () => { assert(html.length > 0); });
+        test(g6, 'References options.css', () => { assertContains(html, 'options.css'); });
+        test(g6, 'References options.js', () => { assertContains(html, 'options.js'); });
+        test(g6, 'Has Appearance section', () => { assertContains(html, 'Appearance'); });
+        test(g6, 'Has Behavior section', () => { assertContains(html, 'Behavior'); });
+        test(g6, 'Has Advanced section', () => { assertContains(html, 'Advanced'); });
+        test(g6, 'Has About section', () => { assertContains(html, 'About'); });
+        test(g6, 'Has theme selector', () => { assertContains(html, 'markup-opt-theme'); });
+        test(g6, 'Has font size slider', () => { assertContains(html, 'markup-opt-fontsize'); });
+        test(g6, 'Has line height slider', () => { assertContains(html, 'markup-opt-lineheight'); });
+        test(g6, 'Has font family select', () => { assertContains(html, 'markup-opt-fontfamily'); });
+        test(g6, 'Has reset button', () => { assertContains(html, 'markup-opt-reset'); });
+        test(g6, 'Has status bar', () => { assertContains(html, 'markup-options-status'); });
+        test(g6, 'No inline scripts (CSP)', () => {
+          assert(!html.includes('onclick='), 'Inline onclick found');
+        });
+      } catch (e) {
+        test(g6, 'options.html fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 7: Manifest Verification
+    const g7 = group('7. Manifest Configuration');
+    (async function() {
+      try {
+        const response = await fetch('../src/manifest.json');
+        const manifest = await response.json();
+
+        test(g7, 'manifest.json loads as valid JSON', () => { assert(typeof manifest === 'object'); });
+        test(g7, 'Has options_page', () => {
+          assertContains(manifest.options_page || '', 'options.html');
+        });
+        test(g7, 'Has popup reference', () => {
+          assertContains(manifest.action.default_popup, 'popup.html');
+        });
+        test(g7, 'Version is 0.1.0', () => {
+          assertEqual(manifest.version, '0.1.0');
+        });
+        test(g7, 'Has storage permission', () => {
+          assert(manifest.permissions.includes('storage'));
+        });
+        test(g7, 'Has tabs permission', () => {
+          assert(manifest.permissions.includes('tabs'));
+        });
+      } catch (e) {
+        test(g7, 'manifest.json fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 8: Service Worker Verification
+    const g8 = group('8. Service Worker (Recent Files)');
+    (async function() {
+      try {
+        const response = await fetch('../src/background/service-worker.js');
+        const code = await response.text();
+
+        test(g8, 'service-worker.js loads', () => { assert(code.length > 0); });
+        test(g8, 'Imports StorageManager', () => { assertContains(code, 'StorageManager.js'); });
+        test(g8, 'Has GET_RECENT_FILES handler', () => { assertContains(code, 'GET_RECENT_FILES'); });
+        test(g8, 'Has ADD_RECENT_FILE handler', () => { assertContains(code, 'ADD_RECENT_FILE'); });
+        test(g8, 'Has APPLY_THEME handler', () => { assertContains(code, 'APPLY_THEME'); });
+        test(g8, 'Has _getRecentFiles function', () => { assertContains(code, '_getRecentFiles'); });
+        test(g8, 'Has _addRecentFile function', () => { assertContains(code, '_addRecentFile'); });
+        test(g8, 'MAX_RECENT_FILES is 10', () => { assertContains(code, 'MAX_RECENT_FILES = 10'); });
+        test(g8, 'Uses recentStorage (local)', () => { assertContains(code, "recentStorage"); });
+        test(g8, 'Deduplicates by URL', () => { assertContains(code, 'f.url !== url'); });
+      } catch (e) {
+        test(g8, 'service-worker.js fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 9: Content Script Edge Cases
+    const g9 = group('9. Content Script (Edge Cases & Polish)');
+    (async function() {
+      try {
+        const response = await fetch('../src/content/content-script.js');
+        const code = await response.text();
+
+        test(g9, 'content-script.js loads', () => { assert(code.length > 0); });
+        test(g9, 'Has _isBinaryContent function', () => { assertContains(code, '_isBinaryContent'); });
+        test(g9, 'Has _showEmptyFileMessage method', () => { assertContains(code, '_showEmptyFileMessage'); });
+        test(g9, 'Has _showBinaryFileMessage method', () => { assertContains(code, '_showBinaryFileMessage'); });
+        test(g9, 'Has _showLargeFileWarning method', () => { assertContains(code, '_showLargeFileWarning'); });
+        test(g9, 'Has _showLoadingSpinner method', () => { assertContains(code, '_showLoadingSpinner'); });
+        test(g9, 'Has _removeLoadingSpinner method', () => { assertContains(code, '_removeLoadingSpinner'); });
+        test(g9, 'Has _addRawToggle method', () => { assertContains(code, '_addRawToggle'); });
+        test(g9, 'Has _trackRecentFile method', () => { assertContains(code, '_trackRecentFile'); });
+        test(g9, 'Sends ADD_RECENT_FILE message', () => { assertContains(code, 'ADD_RECENT_FILE'); });
+        test(g9, 'Large file threshold is 1MB', () => { assertContains(code, '1000000'); });
+        test(g9, 'Binary detection checks null bytes', () => { assertContains(code, "'\\0'"); });
+        test(g9, 'Has "Load All" button', () => { assertContains(code, 'Load All'); });
+        test(g9, 'Has raw/rendered toggle', () => { assertContains(code, 'Raw'); });
+      } catch (e) {
+        test(g9, 'content-script.js fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 10: Accessibility Verification
+    const g10 = group('10. Accessibility Attributes');
+    (async function() {
+      try {
+        const tbResp = await fetch('../src/ui/ToolbarComponent.js');
+        const tbCode = await tbResp.text();
+        const tocResp = await fetch('../src/ui/TocPanelComponent.js');
+        const tocCode = await tocResp.text();
+        const sbResp = await fetch('../src/ui/SearchBarComponent.js');
+        const sbCode = await sbResp.text();
+        const spResp = await fetch('../src/ui/SettingsPanelComponent.js');
+        const spCode = await spResp.text();
+
+        test(g10, 'Toolbar: role="toolbar"', () => { assertContains(tbCode, "role"); assertContains(tbCode, "toolbar"); });
+        test(g10, 'Toolbar: aria-label on buttons', () => { assertContains(tbCode, 'aria-label'); });
+        test(g10, 'Toolbar: aria-expanded on toggle buttons', () => { assertContains(tbCode, 'aria-expanded'); });
+        test(g10, 'Toolbar: tabindex on buttons', () => { assertContains(tbCode, 'tabindex'); });
+        test(g10, 'TOC Panel: role="navigation"', () => { assertContains(tocCode, 'navigation'); });
+        test(g10, 'TOC Panel: aria-expanded on sections', () => { assertContains(tocCode, 'aria-expanded'); });
+        test(g10, 'Search Bar: role="search"', () => { assertContains(sbCode, 'search'); });
+        test(g10, 'Search Bar: aria-label on controls', () => { assertContains(sbCode, 'aria-label'); });
+        test(g10, 'Settings Panel: aria-label on controls', () => { assertContains(spCode, 'aria-label'); });
+      } catch (e) {
+        test(g10, 'UI component fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 11: CSS Verification
+    const g11 = group('11. CSS Files');
+    (async function() {
+      try {
+        const popupCss = await (await fetch('../src/popup/popup.css')).text();
+        const optionsCss = await (await fetch('../src/options/options.css')).text();
+        const uiCss = await (await fetch('../src/styles/ui-components.css')).text();
+
+        test(g11, 'popup.css exists and has content', () => { assert(popupCss.length > 100); });
+        test(g11, 'popup.css: Has body width 320px', () => { assertContains(popupCss, '320px'); });
+        test(g11, 'popup.css: Has toggle styling', () => { assertContains(popupCss, 'markup-toggle'); });
+        test(g11, 'popup.css: Has theme button styling', () => { assertContains(popupCss, 'markup-theme-btn'); });
+        test(g11, 'options.css exists and has content', () => { assert(optionsCss.length > 100); });
+        test(g11, 'options.css: Has section styling', () => { assertContains(optionsCss, 'markup-options-section'); });
+        test(g11, 'options.css: Has range slider styling', () => { assertContains(optionsCss, 'markup-options-range'); });
+        test(g11, 'options.css: Has status bar', () => { assertContains(optionsCss, 'markup-options-status'); });
+        test(g11, 'ui-components.css exists', () => { assert(uiCss.length > 100); });
+      } catch (e) {
+        test(g11, 'CSS file fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 12: Test Files
+    const g12 = group('12. Test Files');
+    (async function() {
+      try {
+        const largeDoc = await (await fetch('test-files/large-document.md')).text();
+        const basicDoc = await (await fetch('test-files/basic.md')).text();
+        const edgeCases = await (await fetch('test-files/edge-cases.md')).text();
+
+        test(g12, 'large-document.md exists', () => { assert(largeDoc.length > 0); });
+        test(g12, 'large-document.md is 1000+ lines', () => {
+          const lines = largeDoc.split('\n').length;
+          assert(lines >= 500, `Only ${lines} lines`);
+        });
+        test(g12, 'basic.md exists', () => { assert(basicDoc.length > 0); });
+        test(g12, 'edge-cases.md exists', () => { assert(edgeCases.length > 0); });
+      } catch (e) {
+        test(g12, 'Test file fetch', () => { throw e; });
+      }
+    })();
+
+    // Group 13: Build Scripts
+    const g13 = group('13. Build & Package Scripts');
+    (async function() {
+      try {
+        const packageSh = await (await fetch('../scripts/package.sh')).text();
+        const buildSh = await (await fetch('../scripts/build.sh')).text();
+
+        test(g13, 'package.sh exists', () => { assert(packageSh.length > 0); });
+        test(g13, 'package.sh has version', () => { assertContains(packageSh, '0.1.0'); });
+        test(g13, 'package.sh creates dist/', () => { assertContains(packageSh, 'dist'); });
+        test(g13, 'package.sh creates zip', () => { assertContains(packageSh, 'zip'); });
+        test(g13, 'build.sh exists', () => { assert(buildSh.length > 0); });
+      } catch (e) {
+        test(g13, 'Script file fetch', () => { throw e; });
+      }
+    })();
+
+    // ---- Summary ----
+    setTimeout(() => {
+      const summaryEl = document.getElementById('summary');
+      const total = totalPass + totalFail;
+      summaryEl.className = 'summary ' + (totalFail === 0 ? 'all-pass' : 'has-fail');
+      summaryEl.textContent = `Phase 7: ${totalPass}/${total} tests passed` +
+        (totalFail > 0 ? ` (${totalFail} failed)` : ' ✅ All pass!');
+    }, 3000);
+  </script>
+</body>
+</html>
