@@ -1,0 +1,62 @@
+/**
+ * MarkUp — CSS Design Tokens (Variables)
+ *
+ * All CSS custom properties for theming, typography, spacing, and decorative
+ * values. Scoped under .markup-content to avoid polluting the host page.
+ *
+ * These defaults match the Light theme. Theme stylesheets override these
+ * values via higher-specificity selectors.
+ *
+ * @namespace markup
+ */
+
+.markup-content {
+  /* ─── Colors ────────────────────────────────────────────────────── */
+  --markup-bg-primary: #ffffff;
+  --markup-bg-secondary: #f6f8fa;
+  --markup-text-primary: #24292f;
+  --markup-text-secondary: #656d76;
+  --markup-text-link: #0969da;
+  --markup-border: #d0d7de;
+  --markup-accent: #0969da;
+
+  /* ─── Code ──────────────────────────────────────────────────────── */
+  --markup-bg-code: rgba(175, 184, 193, 0.2);
+  --markup-bg-code-block: #f6f8fa;
+  --markup-text-code: #24292f;
+
+  /* ─── Blockquote ────────────────────────────────────────────────── */
+  --markup-bg-blockquote: transparent;
+  --markup-border-blockquote: #d0d7de;
+
+  /* ─── Tables ────────────────────────────────────────────────────── */
+  --markup-bg-table-stripe: #f6f8fa;
+  --markup-bg-table-header: #f6f8fa;
+
+  /* ─── Typography ────────────────────────────────────────────────── */
+  --markup-font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --markup-font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code',
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --markup-font-size-base: 16px;
+  --markup-line-height: 1.6;
+
+  /* ─── Spacing ───────────────────────────────────────────────────── */
+  --markup-space-xs: 4px;
+  --markup-space-sm: 8px;
+  --markup-space-md: 16px;
+  --markup-space-lg: 24px;
+  --markup-space-xl: 32px;
+  --markup-space-2xl: 48px;
+
+  /* ─── Decorative ────────────────────────────────────────────────── */
+  --markup-radius-sm: 4px;
+  --markup-radius-md: 6px;
+  --markup-radius-lg: 8px;
+  --markup-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --markup-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  /* ─── Transitions ───────────────────────────────────────────────── */
+  --markup-transition-fast: 150ms ease;
+  --markup-transition-normal: 300ms ease;
+}

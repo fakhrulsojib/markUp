@@ -1,0 +1,95 @@
+{
+  "manifest_version": 3,
+  "name": "MarkUp",
+  "version": "0.1.0",
+  "description": "Render Markdown files beautifully in your browser",
+
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none';"
+  },
+
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "file:///*/*.md",
+        "file:///*/*.markdown",
+        "https://raw.githubusercontent.com/*"
+      ],
+      "js": [
+        "vendor/marked.min.js",
+        "vendor/highlight.min.js",
+        "utils/constants.js",
+        "utils/dom-helpers.js",
+        "utils/sanitizer.js",
+        "core/EventEmitter.js",
+        "core/FileDetector.js",
+        "core/StorageManager.js",
+        "core/Renderer.js",
+        "core/MarkdownParser.js",
+        "core/HtmlRenderer.js",
+        "core/SyntaxHighlighter.js",
+        "core/TocGenerator.js",
+        "core/ThemeManager.js",
+        "core/SearchController.js",
+        "core/PrintManager.js",
+        "core/KeyboardManager.js",
+        "ui/BaseComponent.js",
+        "ui/ToolbarComponent.js",
+        "ui/TocPanelComponent.js",
+        "ui/SearchBarComponent.js",
+        "ui/SettingsPanelComponent.js",
+        "content/content-script.js"
+      ],
+      "css": [
+        "styles/variables.css",
+        "styles/themes/light.css",
+        "styles/themes/dark.css",
+        "styles/themes/sepia.css",
+        "styles/typography.css",
+        "content/content.css",
+        "styles/code-highlight.css",
+        "styles/ui-components.css",
+        "styles/print.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/marked.min.js",
+        "vendor/highlight.min.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

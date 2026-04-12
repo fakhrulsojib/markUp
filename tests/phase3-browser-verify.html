@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Phase 3 — Browser Tests</title>
+</head>
+<body>
+  <h1>Phase 3 Browser Tests</h1>
+  <pre id="output"></pre>
+
+  <!-- Load Phase 2 dependencies (required by Phase 3) -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <!-- Phase 3 modules under test -->
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/FileDetector.js"></script>
+
+  <!-- Mock chrome APIs BEFORE loading MessageBus (it accesses chrome.runtime in constructor) -->
+  <script>
+    // Pre-mock chrome runtime for MessageBus loading
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) {
+      globalThis.chrome = globalThis.chrome || {};
+      chrome.runtime = chrome.runtime || {};
+      chrome.runtime.lastError = null;
+      chrome.runtime.onMessage = chrome.runtime.onMessage || {
+        addListener: function() {},
+        removeListener: function() {},
+      };
+      chrome.runtime.sendMessage = chrome.runtime.sendMessage || function() {};
+      chrome.storage = chrome.storage || {
+        sync: { get: function(k, cb) { cb({}); }, set: function(o, cb) { cb(); }, remove: function(k, cb) { cb(); } },
+        local: { get: function(k, cb) { cb({}); }, set: function(o, cb) { cb(); }, remove: function(k, cb) { cb(); } },
+      };
+    }
+  </script>
+  <script src="../src/core/MessageBus.js"></script>
+
+  <script>
+    const out = document.getElementById('output');
+    let passed = 0, failed = 0;
+
+    function assert(cond, name) {
+      if (cond) { out.textContent += `  ✅ ${name}\n`; passed++; }
+      else { out.textContent += `  ❌ ${name}\n`; failed++; }
+    }
+
+    // ═══════════════════════════════════════════
+    // 📦 Step 3.1 — StorageManager.js
+    // ═══════════════════════════════════════════
+    out.textContent += '\n📦 Step 3.1 — StorageManager.js (structure & logic tests)\n';
+    out.textContent += '  ℹ️  chrome.storage mocked for testing outside extension context\n';
+
+    // Class existence
+    assert(typeof MARKUP_STORAGE_MANAGER === 'function', 'StorageManager class is exported');
+
+    // Constructor defaults
+    {
+      globalThis.chrome = {
+        storage: {
+          sync: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+          local: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+        },
+        runtime: { lastError: null, onMessage: { addListener: function(){}, removeListener: function(){} }, sendMessage: function(){} },
+      };
+
+      const sm1 = new MARKUP_STORAGE_MANAGER();
+      assert(sm1._namespace === 'markup', 'Default namespace is "markup"');
+
+      const sm2 = new MARKUP_STORAGE_MANAGER('custom', 'local');
+      assert(sm2._namespace === 'custom', 'Custom namespace accepted');
+      assert(sm2._storage === chrome.storage.local, 'storageArea "local" selects chrome.storage.local');
+
+      const sm3 = new MARKUP_STORAGE_MANAGER('test', 'sync');
+      assert(sm3._storage === chrome.storage.sync, 'storageArea "sync" selects chrome.storage.sync');
+    }
+
+    // _prefixKey
+    {
+      const sm = new MARKUP_STORAGE_MANAGER('markup');
+      assert(sm._prefixKey('theme') === 'markup_theme', '_prefixKey("theme") → "markup_theme"');
+      assert(sm._prefixKey('fontSize') === 'markup_fontSize', '_prefixKey("fontSize") → "markup_fontSize"');
+      assert(sm._prefixKey('') === 'markup_', '_prefixKey("") → "markup_"');
+    }
+
+    // _getDefault
+    {
+      const sm = new MARKUP_STORAGE_MANAGER();
+      assert(sm._getDefault('THEME') === 'light', '_getDefault("THEME") returns "light"');
+      assert(sm._getDefault('FONT_SIZE') === 16, '_getDefault("FONT_SIZE") returns 16');
+      assert(sm._getDefault('LINE_HEIGHT') === 1.6, '_getDefault("LINE_HEIGHT") returns 1.6');
+      assert(sm._getDefault('NONEXISTENT') === undefined, '_getDefault("NONEXISTENT") returns undefined');
+    }
+
+    // async get — returns default when storage is empty
+    {
+      const sm = new MARKUP_STORAGE_MANAGER();
+      sm.get('THEME').then((val) => {
+        assert(val === 'light', 'async get("THEME") returns default "light" when storage empty');
+      });
+    }
+
+    // async set → get roundtrip with mock
+    {
+      const mockStore = {};
+      globalThis.chrome = {
+        storage: {
+          sync: {
+            get: function(key, cb) { cb(mockStore); },
+            set: function(obj, cb) { Object.assign(mockStore, obj); cb(); },
+            remove: function(key, cb) { delete mockStore[key]; cb(); },
+          },
+          local: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+        },
+        runtime: { lastError: null, onMessage: { addListener: function(){}, removeListener: function(){} }, sendMessage: function(){} },
+      };
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+      sm.set('theme', 'dark').then(() => {
+        assert(mockStore['markup_theme'] === 'dark', 'async set("theme", "dark") persists to mock storage');
+        chrome.storage.sync.get = function(key, cb) { cb(mockStore); };
+        return sm.get('theme');
+      }).then((val) => {
+        assert(val === 'dark', 'async get("theme") returns "dark" after set');
+      });
+    }
+
+    // async remove
+    {
+      const mockStore = { markup_test: 'value' };
+      globalThis.chrome = {
+        storage: {
+          sync: {
+            get: function(key, cb) { cb(mockStore); },
+            set: function(obj, cb) { Object.assign(mockStore, obj); cb(); },
+            remove: function(key, cb) { delete mockStore[key]; cb(); },
+          },
+          local: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+        },
+        runtime: { lastError: null, onMessage: { addListener: function(){}, removeListener: function(){} }, sendMessage: function(){} },
+      };
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+      sm.remove('test').then(() => {
+        assert(!('markup_test' in mockStore), 'async remove("test") deletes from mock storage');
+      });
+    }
+
+    // async getAll
+    {
+      const mockStore = { markup_theme: 'dark', markup_fontSize: 18, other_key: 'ignored' };
+      globalThis.chrome = {
+        storage: {
+          sync: {
+            get: function(key, cb) { cb(mockStore); },
+            set: function(obj, cb) { cb(); },
+            remove: function(key, cb) { cb(); },
+          },
+          local: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+        },
+        runtime: { lastError: null, onMessage: { addListener: function(){}, removeListener: function(){} }, sendMessage: function(){} },
+      };
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+      sm.getAll().then((all) => {
+        assert(all.theme === 'dark', 'async getAll() includes "theme" → "dark"');
+        assert(all.fontSize === 18, 'async getAll() includes "fontSize" → 18');
+        assert(!('other_key' in all), 'async getAll() excludes non-namespaced keys');
+      });
+    }
+
+    // Error handling with lastError
+    {
+      globalThis.chrome = {
+        storage: {
+          sync: {
+            get: function(key, cb) {
+              chrome.runtime.lastError = { message: 'Simulated error' };
+              cb({});
+              chrome.runtime.lastError = null;
+            },
+            set: function(obj, cb) { cb(); },
+            remove: function(key, cb) { cb(); },
+          },
+          local: { get: function(key, cb) { cb({}); }, set: function(obj, cb) { cb(); }, remove: function(key, cb) { cb(); } },
+        },
+        runtime: { lastError: null, onMessage: { addListener: function(){}, removeListener: function(){} }, sendMessage: function(){} },
+      };
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+      sm.get('THEME').then((val) => {
+        assert(val === 'light', 'async get() returns default on chrome.runtime.lastError');
+      });
+    }
+
+    // ═══════════════════════════════════════════
+    // 📦 Step 3.2 — MessageBus.js
+    // ═══════════════════════════════════════════
+    out.textContent += '\n📦 Step 3.2 — MessageBus.js (structure tests)\n';
+    out.textContent += '  ℹ️  Full messaging tests require extension context (service worker ↔ content script)\n';
+
+    // MessageBus class existence
+    assert(typeof MARKUP_MESSAGE_BUS === 'function', 'MessageBus class is exported');
+
+    // Mock chrome.runtime for MessageBus instantiation
+    {
+      const listeners = [];
+      globalThis.chrome = {
+        runtime: {
+          lastError: null,
+          onMessage: {
+            addListener: function(fn) { listeners.push(fn); },
+            removeListener: function(fn) {
+              const idx = listeners.indexOf(fn);
+              if (idx > -1) listeners.splice(idx, 1);
+            },
+          },
+          sendMessage: function(msg, cb) {
+            for (const listener of listeners) {
+              listener(msg, {}, cb || function(){});
+            }
+          },
+        },
+        storage: {
+          sync: { get: function(k, cb) { cb({}); }, set: function(o, cb) { cb(); }, remove: function(k, cb) { cb(); } },
+          local: { get: function(k, cb) { cb({}); }, set: function(o, cb) { cb(); }, remove: function(k, cb) { cb(); } },
+        },
+      };
+
+      const mb = new MARKUP_MESSAGE_BUS();
+
+      // _handlers is a Map
+      assert(mb._handlers instanceof Map, '_handlers is a Map');
+      assert(mb._handlers.size === 0, '_handlers starts empty');
+
+      // listen registers a handler
+      let receivedPayload = null;
+      mb.listen('test-action', (payload) => {
+        receivedPayload = payload;
+        return { echo: payload };
+      });
+      assert(mb._handlers.has('test-action'), 'listen() registers handler');
+
+      // _onMessage dispatches correctly
+      let responseReceived = null;
+      mb._onMessage(
+        { action: 'test-action', payload: { data: 42 } },
+        {},
+        (response) => { responseReceived = response; }
+      );
+      assert(receivedPayload && receivedPayload.data === 42, '_onMessage dispatches payload to handler');
+      assert(responseReceived && responseReceived.echo && responseReceived.echo.data === 42, '_onMessage sends response via sendResponse');
+
+      // _onMessage ignores unknown actions
+      let unknownResponse = 'unset';
+      const result = mb._onMessage(
+        { action: 'unknown', payload: {} },
+        {},
+        (resp) => { unknownResponse = resp; }
+      );
+      assert(result === false, '_onMessage returns false for unknown actions');
+      assert(unknownResponse === 'unset', 'No sendResponse called for unknown actions');
+
+      // _onMessage ignores messages without action
+      const noActionResult = mb._onMessage(
+        { foo: 'bar' },
+        {},
+        () => {}
+      );
+      assert(noActionResult === false, '_onMessage returns false for messages without action');
+
+      // unlisten removes handler
+      mb.unlisten('test-action');
+      assert(!mb._handlers.has('test-action'), 'unlisten() removes handler');
+
+      // listen type check
+      let threwError = false;
+      try { mb.listen('bad', 'not a function'); } catch (e) { threwError = true; }
+      assert(threwError, 'listen() throws TypeError for non-function handler');
+
+      // destroy clears handlers and removes listener
+      mb.listen('temp', () => {});
+      mb.destroy();
+      assert(mb._handlers.size === 0, 'destroy() clears all handlers');
+    }
+
+    // ═══════════════════════════════════════════
+    // 📦 Step 3.3 — FileDetector.js
+    // ═══════════════════════════════════════════
+    out.textContent += '\n📦 Step 3.3 — FileDetector.js\n';
+
+    assert(typeof MARKUP_FILE_DETECTOR === 'function', 'FileDetector class is exported');
+
+    {
+      const fd = new MARKUP_FILE_DETECTOR();
+
+      // --- isMarkdownUrl ---
+      out.textContent += '  ─── isMarkdownUrl ───\n';
+
+      // Positive cases
+      assert(fd.isMarkdownUrl('file:///docs/README.md') === true,
+        'file:///docs/README.md → true');
+      assert(fd.isMarkdownUrl('https://raw.githubusercontent.com/user/repo/main/README.md') === true,
+        'raw.githubusercontent .md → true');
+      assert(fd.isMarkdownUrl('https://example.com/doc.md?v=2') === true,
+        'https://example.com/doc.md?v=2 → true');
+      assert(fd.isMarkdownUrl('file:///home/user/notes.markdown') === true,
+        'file:///notes.markdown → true');
+      assert(fd.isMarkdownUrl('https://example.com/file.mdown') === true,
+        '.mdown → true');
+      assert(fd.isMarkdownUrl('https://example.com/file.mkd') === true,
+        '.mkd → true');
+      assert(fd.isMarkdownUrl('https://example.com/file.mdx') === true,
+        '.mdx → true');
+      assert(fd.isMarkdownUrl('file:///path/to/DOC.MD') === true,
+        'Case insensitive: .MD → true');
+      assert(fd.isMarkdownUrl('https://example.com/doc.md#section-1') === true,
+        '.md with fragment → true');
+      assert(fd.isMarkdownUrl('https://example.com/doc.md?q=1#sec') === true,
+        '.md with query+fragment → true');
+
+      // Negative cases
+      assert(fd.isMarkdownUrl('https://example.com/page') === false,
+        'https://example.com/page → false');
+      assert(fd.isMarkdownUrl('https://example.com/file.html') === false,
+        '.html → false');
+      assert(fd.isMarkdownUrl('https://example.com/file.txt') === false,
+        '.txt → false');
+      assert(fd.isMarkdownUrl('') === false,
+        'Empty string → false');
+      assert(fd.isMarkdownUrl(null) === false,
+        'null → false');
+      assert(fd.isMarkdownUrl(undefined) === false,
+        'undefined → false');
+
+      // --- isMarkdownMime ---
+      out.textContent += '  ─── isMarkdownMime ───\n';
+
+      assert(fd.isMarkdownMime('text/markdown') === true,
+        'text/markdown → true');
+      assert(fd.isMarkdownMime('text/x-markdown') === true,
+        'text/x-markdown → true');
+      assert(fd.isMarkdownMime('text/markdown; charset=utf-8') === true,
+        'text/markdown with charset → true');
+      assert(fd.isMarkdownMime('text/plain') === false,
+        'text/plain → false (not a MD MIME)');
+      assert(fd.isMarkdownMime('text/html') === false,
+        'text/html → false');
+      assert(fd.isMarkdownMime('') === false,
+        'Empty string → false');
+      assert(fd.isMarkdownMime(null) === false,
+        'null → false');
+
+      // --- getFileNameFromUrl ---
+      out.textContent += '  ─── getFileNameFromUrl ───\n';
+
+      assert(fd.getFileNameFromUrl('file:///docs/README.md') === 'README.md',
+        'file:///docs/README.md → "README.md"');
+      assert(fd.getFileNameFromUrl('https://raw.githubusercontent.com/user/repo/main/CHANGELOG.md') === 'CHANGELOG.md',
+        'GitHub raw URL → "CHANGELOG.md"');
+      assert(fd.getFileNameFromUrl('https://example.com/path/to/doc.md?v=2') === 'doc.md',
+        'URL with query → "doc.md"');
+      assert(fd.getFileNameFromUrl('https://example.com/path/to/file.md#section') === 'file.md',
+        'URL with fragment → "file.md"');
+      assert(fd.getFileNameFromUrl('') === '',
+        'Empty string → ""');
+      assert(fd.getFileNameFromUrl(null) === '',
+        'null → ""');
+    }
+
+    // ═══════════════════════════════════════════
+    // 📦 Step 3.4 — Service Worker Wiring (static checks)
+    // ═══════════════════════════════════════════
+    out.textContent += '\n📦 Step 3.4 — Service Worker (static checks)\n';
+    out.textContent += '  ℹ️  Full injection tests require Chrome extension context\n';
+
+    // Verify that the service worker file is loadable and contains expected content
+    {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '../src/background/service-worker.js', false);
+      xhr.send();
+      const swContent = xhr.responseText;
+
+      assert(swContent.includes('importScripts'), 'Service worker uses importScripts');
+      assert(swContent.includes('FileDetector'), 'Service worker references FileDetector');
+      assert(swContent.includes('MessageBus'), 'Service worker references MessageBus');
+      assert(swContent.includes('chrome.tabs.onUpdated'), 'Service worker has tabs.onUpdated listener');
+      assert(swContent.includes('chrome.scripting.executeScript'), 'Service worker has scripting.executeScript');
+      assert(swContent.includes('_isCoveredByStaticMatches'), 'Service worker has static match check');
+      assert(swContent.includes("'ping'"), 'Service worker has ping handler');
+    }
+
+    // ─── Summary ───
+    // Wait for all async tests to flush
+    setTimeout(() => {
+      out.textContent += `\n${'─'.repeat(40)}\n`;
+      out.textContent += `Results: ${passed} passed, ${failed} failed\n`;
+      if (failed === 0) {
+        out.textContent += 'All Phase 3 browser tests passed! ✅\n';
+      } else {
+        out.textContent += `${failed} test(s) failed — review above. ❌\n`;
+      }
+    }, 500);
+  </script>
+</body>
+</html>
