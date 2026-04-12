@@ -1,0 +1,114 @@
+/**
+ * MarkUp — Print Stylesheet
+ *
+ * Optimized styles for printing rendered Markdown content.
+ * Hides UI chrome (toolbar, TOC panel, search bar, settings panel),
+ * forces light-theme colors, and adds page break controls.
+ */
+
+@media print {
+  /* ─── Hide UI Chrome ──────────────────────────────────────────── */
+  .markup-toolbar,
+  .markup-toc-panel,
+  .markup-search-bar,
+  .markup-settings-panel {
+    display: none !important;
+  }
+
+  /* ─── Force Light Theme ───────────────────────────────────────── */
+  body.markup-body {
+    background: #ffffff !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .markup-content {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    min-height: auto !important;
+  }
+
+  /* ─── Typography for Print ────────────────────────────────────── */
+  .markup-content h1,
+  .markup-content h2,
+  .markup-content h3,
+  .markup-content h4,
+  .markup-content h5,
+  .markup-content h6 {
+    color: #000000 !important;
+    page-break-after: avoid;
+  }
+
+  .markup-content a {
+    color: #000000 !important;
+    text-decoration: underline;
+  }
+
+  .markup-content a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666666;
+  }
+
+  /* ─── Code Blocks ─────────────────────────────────────────────── */
+  .markup-content pre {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    border: 1px solid #cccccc !important;
+    background: #f8f8f8 !important;
+    page-break-inside: avoid;
+  }
+
+  .markup-content code:not(pre code) {
+    background: #f0f0f0 !important;
+    color: #000000 !important;
+  }
+
+  .markup-content .hljs {
+    background: #f8f8f8 !important;
+    color: #000000 !important;
+  }
+
+  /* ─── Tables ──────────────────────────────────────────────────── */
+  .markup-content table {
+    page-break-inside: avoid;
+  }
+
+  .markup-content th,
+  .markup-content td {
+    border-color: #cccccc !important;
+  }
+
+  .markup-content thead {
+    background: #f0f0f0 !important;
+  }
+
+  /* ─── Images ──────────────────────────────────────────────────── */
+  .markup-content img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  /* ─── Blockquotes ─────────────────────────────────────────────── */
+  .markup-content blockquote {
+    border-left-color: #cccccc !important;
+    color: #333333 !important;
+    page-break-inside: avoid;
+  }
+
+  /* ─── Remove Decorative Elements ──────────────────────────────── */
+  .markup-content * {
+    transition: none !important;
+    box-shadow: none !important;
+  }
+
+  /* ─── Scrollbar Hiding ────────────────────────────────────────── */
+  .markup-content pre::-webkit-scrollbar {
+    display: none;
+  }
+}

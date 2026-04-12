@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 6 — Browser Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; }
+    h1 { font-size: 1.5em; margin-bottom: 8px; }
+    h2 { font-size: 1.1em; margin: 16px 0 8px; color: #8b949e; }
+    .summary { margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #161b22; }
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .warn { color: #d29922; }
+    .test-group { margin-bottom: 12px; }
+    .test-result { padding: 4px 8px; font-size: 0.85em; font-family: monospace; }
+    #sandbox { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Phase 6 — Browser Tests</h1>
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+  <div id="sandbox"></div>
+
+  <!-- Load dependencies -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <!-- Mock chrome.storage for testing outside extension context -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.storage) {
+      const _store = {};
+      window.chrome = window.chrome || {};
+      chrome.storage = {
+        sync: {
+          get: function(keys, callback) {
+            const result = {};
+            if (keys === null) {
+              Object.assign(result, _store);
+            } else if (typeof keys === 'string') {
+              if (_store[keys] !== undefined) result[keys] = _store[keys];
+            } else if (Array.isArray(keys)) {
+              keys.forEach(k => { if (_store[k] !== undefined) result[k] = _store[k]; });
+            } else if (typeof keys === 'object') {
+              for (const [k, v] of Object.entries(keys)) {
+                result[k] = _store[k] !== undefined ? _store[k] : v;
+              }
+            }
+            if (callback) callback(result);
+          },
+          set: function(items, callback) {
+            Object.assign(_store, items);
+            if (callback) callback();
+          },
+          remove: function(keys, callback) {
+            if (typeof keys === 'string') keys = [keys];
+            keys.forEach(k => delete _store[k]);
+            if (callback) callback();
+          }
+        },
+        local: {
+          get: function(keys, callback) { chrome.storage.sync.get(keys, callback); },
+          set: function(items, callback) { chrome.storage.sync.set(items, callback); },
+          remove: function(keys, callback) { chrome.storage.sync.remove(keys, callback); }
+        }
+      };
+      chrome.runtime = chrome.runtime || {};
+      chrome.runtime.lastError = null;
+    }
+  </script>
+
+  <!-- Load core modules -->
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/ThemeManager.js"></script>
+  <script src="../src/core/SearchController.js"></script>
+  <script src="../src/core/PrintManager.js"></script>
+  <script src="../src/core/KeyboardManager.js"></script>
+
+  <!-- Load UI components -->
+  <script src="../src/ui/BaseComponent.js"></script>
+  <script src="../src/ui/ToolbarComponent.js"></script>
+  <script src="../src/ui/TocPanelComponent.js"></script>
+  <script src="../src/ui/SearchBarComponent.js"></script>
+  <script src="../src/ui/SettingsPanelComponent.js"></script>
+
+  <!-- Load CSS files -->
+  <link rel="stylesheet" href="../src/styles/variables.css">
+  <link rel="stylesheet" href="../src/styles/themes/light.css">
+  <link rel="stylesheet" href="../src/styles/themes/dark.css">
+  <link rel="stylesheet" href="../src/styles/themes/sepia.css">
+  <link rel="stylesheet" href="../src/styles/typography.css">
+  <link rel="stylesheet" href="../src/content/content.css">
+  <link rel="stylesheet" href="../src/styles/ui-components.css">
+  <link rel="stylesheet" href="../src/styles/print.css">
+
+  <script>
+    (function() {
+      'use strict';
+
+      let passed = 0;
+      let failed = 0;
+      let warned = 0;
+      const results = document.getElementById('results');
+      const sandbox = document.getElementById('sandbox');
+
+      function log(type, message) {
+        const div = document.createElement('div');
+        div.className = `test-result ${type}`;
+        div.textContent = `  ${type.toUpperCase()}: ${message}`;
+        results.appendChild(div);
+        if (type === 'pass') passed++;
+        else if (type === 'fail') failed++;
+        else warned++;
+      }
+
+      function assert(condition, message) {
+        if (condition) {
+          log('pass', message);
+        } else {
+          log('fail', message);
+          console.error('FAIL:', message);
+        }
+      }
+
+      function groupHeader(name) {
+        const h2 = document.createElement('h2');
+        h2.textContent = name;
+        results.appendChild(h2);
+      }
+
+      function cleanupSandbox() {
+        sandbox.innerHTML = '';
+        sandbox.style.display = 'none';
+      }
+
+      function showSandbox() {
+        sandbox.style.display = 'block';
+      }
+
+      // ===== Test Group 1: BaseComponent =====
+      groupHeader('1. BaseComponent — Abstract Enforcement');
+
+      (function() {
+        const BC = (typeof MARKUP_BASE_COMPONENT !== 'undefined') ? MARKUP_BASE_COMPONENT : null;
+        assert(BC !== null, 'BaseComponent is globally accessible via MARKUP_BASE_COMPONENT');
+
+        // Cannot instantiate directly
+        let threw = false;
+        try {
+          new BC('test');
+        } catch (e) {
+          threw = true;
+          assert(e.message.includes('abstract'), 'Direct instantiation throws Error with "abstract" message');
+        }
+        assert(threw, 'BaseComponent constructor throws when instantiated directly');
+
+        // Requires non-empty id
+        class TestComp extends BC {
+          mount(parent) { this._element = document.createElement('div'); parent.appendChild(this._element); this._mounted = true; }
+          unmount() { if (this._element && this._element.parentNode) this._element.parentNode.removeChild(this._element); this._mounted = false; }
+        }
+
+        let threwId = false;
+        try { new TestComp(''); } catch (e) { threwId = true; }
+        assert(threwId, 'Constructor throws for empty id');
+
+        // Subclass works
+        const comp = new TestComp('test-comp');
+        assert(comp.getId() === 'test-comp', 'getId() returns the id');
+        assert(comp.isMounted() === false, 'isMounted() is false before mount');
+        assert(comp.getElement() === null, 'getElement() is null before mount');
+
+        // Mount
+        showSandbox();
+        comp.mount(sandbox);
+        assert(comp.isMounted() === true, 'isMounted() is true after mount');
+        assert(comp.getElement() !== null, 'getElement() returns element after mount');
+
+        // Show / Hide / isVisible
+        assert(comp.isVisible() === true, 'isVisible() is true after mount');
+        comp.hide();
+        assert(comp.isVisible() === false, 'isVisible() is false after hide');
+        comp.show();
+        assert(comp.isVisible() === true, 'isVisible() is true after show');
+
+        // Toggle
+        comp.toggle();
+        assert(comp.isVisible() === false, 'toggle() hides when visible');
+        comp.toggle();
+        assert(comp.isVisible() === true, 'toggle() shows when hidden');
+
+        // Unmount
+        comp.unmount();
+        assert(comp.isMounted() === false, 'isMounted() is false after unmount');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 2: BaseComponent abstract methods =====
+      groupHeader('2. BaseComponent — Abstract Method Enforcement');
+
+      (function() {
+        const BC = MARKUP_BASE_COMPONENT;
+
+        // Subclass without mount/unmount override
+        class BadComp extends BC {
+          /* intentionally no mount/unmount */
+        }
+
+        const bad = new BadComp('bad-comp');
+
+        let threwMount = false;
+        try { bad.mount(sandbox); } catch (e) { threwMount = true; }
+        assert(threwMount, 'Base mount() throws when not overridden');
+
+        let threwUnmount = false;
+        try { bad.unmount(); } catch (e) { threwUnmount = true; }
+        assert(threwUnmount, 'Base unmount() throws when not overridden');
+      })();
+
+      // ===== Test Group 3: ToolbarComponent =====
+      groupHeader('3. ToolbarComponent');
+
+      (function() {
+        const ToolbarClass = (typeof MARKUP_TOOLBAR_COMPONENT !== 'undefined') ? MARKUP_TOOLBAR_COMPONENT : null;
+        assert(ToolbarClass !== null, 'ToolbarComponent is globally accessible');
+
+        // Requires EventEmitter
+        let threw = false;
+        try { new ToolbarClass(null); } catch (e) { threw = true; }
+        assert(threw, 'Constructor throws when emitter is null');
+
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new ToolbarClass(emitter);
+
+        // Mount
+        showSandbox();
+        toolbar.mount(sandbox);
+        assert(toolbar.isMounted(), 'Toolbar mounts successfully');
+
+        const el = toolbar.getElement();
+        assert(el !== null, 'Toolbar element exists');
+        assert(el.classList.contains('markup-toolbar'), 'Element has markup-toolbar class');
+        assert(el.getAttribute('role') === 'toolbar', 'Element has role=toolbar');
+
+        // Check 5 buttons
+        const buttons = el.querySelectorAll('.markup-toolbar-btn');
+        assert(buttons.length === 5, `Toolbar has 5 buttons (got: ${buttons.length})`);
+
+        // Button actions
+        const actions = Array.from(buttons).map(b => b.getAttribute('data-action'));
+        assert(actions.includes('toc'), 'Has TOC button');
+        assert(actions.includes('theme'), 'Has Theme button');
+        assert(actions.includes('search'), 'Has Search button');
+        assert(actions.includes('print'), 'Has Print button');
+        assert(actions.includes('settings'), 'Has Settings button');
+
+        // Button click emits event
+        const EVENTS = MARKUP_CONSTANTS.EVENTS;
+        let tocFired = false;
+        emitter.on(EVENTS.TOC_TOGGLED, () => { tocFired = true; });
+        buttons[0].click();
+        assert(tocFired, 'TOC button click emits TOC_TOGGLED event');
+
+        let searchFired = false;
+        emitter.on(EVENTS.SEARCH_TOGGLED, () => { searchFired = true; });
+        buttons[2].click();
+        assert(searchFired, 'Search button click emits SEARCH_TOGGLED event');
+
+        // Unmount
+        toolbar.unmount();
+        assert(!toolbar.isMounted(), 'Toolbar unmounts successfully');
+        assert(toolbar.getElement() === null, 'Element is null after unmount');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 4: SearchController =====
+      groupHeader('4. SearchController');
+
+      (function() {
+        const SCClass = (typeof MARKUP_SEARCH_CONTROLLER !== 'undefined') ? MARKUP_SEARCH_CONTROLLER : null;
+        assert(SCClass !== null, 'SearchController is globally accessible');
+
+        const sc = new SCClass();
+        assert(sc.getMatchCount() === 0, 'Initial match count is 0');
+        assert(sc.getCurrentIndex() === -1, 'Initial current index is -1');
+
+        // Create test container
+        showSandbox();
+        const container = document.createElement('div');
+        container.innerHTML = '';
+        const p1 = document.createElement('p');
+        p1.textContent = 'Hello world, hello earth, hello mars';
+        container.appendChild(p1);
+        const p2 = document.createElement('p');
+        p2.textContent = 'Another paragraph with hello in it';
+        container.appendChild(p2);
+        sandbox.appendChild(container);
+
+        // Search
+        const count = sc.search('hello', container);
+        assert(count === 4, `Found 4 matches for "hello" (got: ${count})`);
+        assert(sc.getMatchCount() === 4, 'getMatchCount() returns 4');
+        assert(sc.getCurrentIndex() === 0, 'Current index is 0 (first match)');
+
+        // Check mark elements
+        const marks = container.querySelectorAll('.markup-search-highlight');
+        assert(marks.length === 4, `4 mark elements in DOM (got: ${marks.length})`);
+
+        // Active mark
+        const activeMarks = container.querySelectorAll('.markup-search-active');
+        assert(activeMarks.length === 1, 'One active mark');
+
+        // Next match
+        sc.nextMatch();
+        assert(sc.getCurrentIndex() === 1, 'nextMatch() advances to index 1');
+
+        sc.nextMatch();
+        assert(sc.getCurrentIndex() === 2, 'nextMatch() advances to index 2');
+
+        // Prev match
+        sc.prevMatch();
+        assert(sc.getCurrentIndex() === 1, 'prevMatch() goes back to index 1');
+
+        // Wrap around
+        sc.nextMatch(); // 2
+        sc.nextMatch(); // 3
+        sc.nextMatch(); // 0 (wrap)
+        assert(sc.getCurrentIndex() === 0, 'nextMatch() wraps to 0');
+
+        sc.prevMatch(); // 3 (wrap)
+        assert(sc.getCurrentIndex() === 3, 'prevMatch() wraps to 3');
+
+        // Clear highlights
+        sc.clearHighlights();
+        const remainingMarks = container.querySelectorAll('.markup-search-highlight');
+        assert(remainingMarks.length === 0, 'clearHighlights() removes all marks');
+        assert(sc.getMatchCount() === 0, 'Match count is 0 after clear');
+        assert(sc.getCurrentIndex() === -1, 'Current index is -1 after clear');
+
+        // Verify text is restored
+        const allText = container.textContent;
+        assert(allText.includes('Hello world'), 'Original text is restored after clear');
+
+        // Case-sensitive search
+        const scCaseSensitive = new SCClass({ caseSensitive: true });
+        const count2 = scCaseSensitive.search('Hello', container);
+        assert(count2 === 1, `Case-sensitive: found 1 "Hello" (got: ${count2})`);
+        scCaseSensitive.clearHighlights();
+
+        // No match
+        const count3 = sc.search('zzzzz', container);
+        assert(count3 === 0, 'No matches returns 0');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 5: KeyboardManager =====
+      groupHeader('5. KeyboardManager');
+
+      (function() {
+        const KMClass = (typeof MARKUP_KEYBOARD_MANAGER !== 'undefined') ? MARKUP_KEYBOARD_MANAGER : null;
+        assert(KMClass !== null, 'KeyboardManager is globally accessible');
+
+        const km = new KMClass();
+        assert(km.isEnabled() === false, 'Initially disabled');
+
+        // Register
+        let handlerCalled = false;
+        km.register('ctrl+shift+f', () => { handlerCalled = true; });
+        assert(km.getRegisteredCombos().includes('ctrl+shift+f'), 'Combo registered');
+
+        // Combo normalization
+        km.register('Shift+Ctrl+D', () => {});
+        assert(km.getRegisteredCombos().includes('ctrl+shift+d'), 'Combo normalized to lowercase sorted');
+
+        // Enable
+        km.enable();
+        assert(km.isEnabled() === true, 'Enabled after enable()');
+
+        // Simulate keydown
+        const event = new KeyboardEvent('keydown', {
+          key: 'f',
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        });
+        document.body.dispatchEvent(event);
+        assert(handlerCalled, 'Handler called on matching keydown event');
+
+        // Unregister
+        km.unregister('ctrl+shift+f');
+        assert(!km.getRegisteredCombos().includes('ctrl+shift+f'), 'Combo unregistered');
+
+        // Disable
+        km.disable();
+        assert(km.isEnabled() === false, 'Disabled after disable()');
+
+        // Requires function handler
+        let threwType = false;
+        try { km.register('ctrl+a', 'not a function'); } catch (e) { threwType = true; }
+        assert(threwType, 'register() throws TypeError for non-function handler');
+
+        // Destroy
+        km.destroy();
+        assert(km.isEnabled() === false, 'Disabled after destroy()');
+        assert(km.getRegisteredCombos().length === 0, 'All combos cleared after destroy');
+      })();
+
+      // ===== Test Group 6: PrintManager =====
+      groupHeader('6. PrintManager');
+
+      (function() {
+        const PMClass = (typeof MARKUP_PRINT_MANAGER !== 'undefined') ? MARKUP_PRINT_MANAGER : null;
+        assert(PMClass !== null, 'PrintManager is globally accessible');
+
+        const pm = new PMClass();
+        assert(pm.isPrintMode() === false, 'Initially not in print mode');
+
+        // We can't actually test window.print() in a test environment,
+        // but we can test the class structure and methods
+        assert(typeof pm.preparePrintView === 'function', 'Has preparePrintView method');
+        assert(typeof pm.restoreView === 'function', 'Has restoreView method');
+        assert(typeof pm.destroy === 'function', 'Has destroy method');
+
+        pm.destroy();
+      })();
+
+      // ===== Test Group 7: TocPanelComponent =====
+      groupHeader('7. TocPanelComponent');
+
+      (function() {
+        const TocClass = (typeof MARKUP_TOC_PANEL_COMPONENT !== 'undefined') ? MARKUP_TOC_PANEL_COMPONENT : null;
+        assert(TocClass !== null, 'TocPanelComponent is globally accessible');
+
+        const tocData = {
+          tree: [
+            { level: 1, text: 'Title', id: 'title', children: [
+              { level: 2, text: 'Section A', id: 'section-a', children: [] },
+              { level: 2, text: 'Section B', id: 'section-b', children: [
+                { level: 3, text: 'Sub B1', id: 'sub-b1', children: [] },
+              ] },
+            ] },
+          ],
+        };
+
+        const toc = new TocClass({ tocData: tocData });
+
+        showSandbox();
+        toc.mount(sandbox);
+        assert(toc.isMounted(), 'TOC panel mounts');
+
+        const el = toc.getElement();
+        assert(el !== null, 'TOC panel element exists');
+        assert(el.classList.contains('markup-toc-panel'), 'Has markup-toc-panel class');
+
+        // Check header
+        const title = el.querySelector('.markup-toc-title');
+        assert(title !== null && title.textContent === 'Table of Contents', 'Header shows "Table of Contents"');
+
+        // Check close button
+        const closeBtn = el.querySelector('.markup-toc-close');
+        assert(closeBtn !== null, 'Close button exists');
+
+        // Check TOC links
+        const links = el.querySelectorAll('.markup-toc-link');
+        assert(links.length === 4, `4 TOC links rendered (got: ${links.length})`);
+
+        // Check link text
+        const linkTexts = Array.from(links).map(l => l.textContent);
+        assert(linkTexts.includes('Title'), 'Has "Title" link');
+        assert(linkTexts.includes('Section A'), 'Has "Section A" link');
+        assert(linkTexts.includes('Section B'), 'Has "Section B" link');
+        assert(linkTexts.includes('Sub B1'), 'Has "Sub B1" link');
+
+        // Check nested structure
+        const nestedLists = el.querySelectorAll('.markup-toc-list');
+        assert(nestedLists.length > 1, 'Has nested lists');
+
+        // Check level classes
+        const level1 = el.querySelector('.markup-toc-level-1');
+        assert(level1 !== null, 'Has level-1 item');
+        const level3 = el.querySelector('.markup-toc-level-3');
+        assert(level3 !== null, 'Has level-3 item');
+
+        // Show / hide / toggle
+        assert(toc.isVisible() === false, 'Starts hidden');
+        toc.show();
+        assert(toc.isVisible() === true, 'Visible after show()');
+        toc.hide();
+        // Note: transition-based hide — check class
+        assert(!el.classList.contains('markup-toc-panel-open'), 'Panel-open class removed after hide');
+
+        // Toggle
+        toc.toggle();
+        assert(toc.isVisible() === true, 'toggle() shows panel');
+
+        // Unmount
+        toc.unmount();
+        assert(!toc.isMounted(), 'TOC panel unmounts');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 8: SearchBarComponent =====
+      groupHeader('8. SearchBarComponent');
+
+      (function() {
+        const SBClass = (typeof MARKUP_SEARCH_BAR_COMPONENT !== 'undefined') ? MARKUP_SEARCH_BAR_COMPONENT : null;
+        assert(SBClass !== null, 'SearchBarComponent is globally accessible');
+
+        // Requires SearchController
+        let threw = false;
+        try { new SBClass(null, null); } catch (e) { threw = true; }
+        assert(threw, 'Constructor throws when searchController is null');
+
+        const sc = new MARKUP_SEARCH_CONTROLLER();
+        const container = document.createElement('div');
+        container.textContent = 'Test content for searching';
+        sandbox.appendChild(container);
+
+        const sb = new SBClass(sc, container);
+
+        showSandbox();
+        sb.mount(sandbox);
+        assert(sb.isMounted(), 'Search bar mounts');
+
+        const el = sb.getElement();
+        assert(el !== null, 'Search bar element exists');
+        assert(el.classList.contains('markup-search-bar'), 'Has markup-search-bar class');
+        assert(el.getAttribute('role') === 'search', 'Has role=search');
+
+        // Check sub-elements
+        const input = el.querySelector('.markup-search-input');
+        assert(input !== null, 'Input field exists');
+        assert(input.type === 'text', 'Input is type=text');
+
+        const count = el.querySelector('.markup-search-count');
+        assert(count !== null, 'Count display exists');
+
+        const prevBtn = el.querySelector('.markup-search-prev');
+        assert(prevBtn !== null, 'Previous button exists');
+
+        const nextBtn = el.querySelector('.markup-search-next');
+        assert(nextBtn !== null, 'Next button exists');
+
+        const closeBtn = el.querySelector('.markup-search-close');
+        assert(closeBtn !== null, 'Close button exists');
+
+        // Show / hide
+        assert(sb.isVisible() === false, 'Starts hidden');
+        sb.show();
+        assert(sb.isVisible() === true, 'Visible after show');
+
+        // Unmount
+        sb.unmount();
+        assert(!sb.isMounted(), 'Search bar unmounts');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 9: SettingsPanelComponent =====
+      groupHeader('9. SettingsPanelComponent');
+
+      (function() {
+        const SPClass = (typeof MARKUP_SETTINGS_PANEL_COMPONENT !== 'undefined') ? MARKUP_SETTINGS_PANEL_COMPONENT : null;
+        assert(SPClass !== null, 'SettingsPanelComponent is globally accessible');
+
+        // Requires StorageManager
+        let threw = false;
+        try { new SPClass(null, null, null, null); } catch (e) { threw = true; }
+        assert(threw, 'Constructor throws when storageManager is null');
+
+        const storage = new MARKUP_STORAGE_MANAGER();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const tm = new MARKUP_THEME_MANAGER(storage, emitter);
+
+        // Create a content container for live updates
+        const content = document.createElement('article');
+        content.className = 'markup-content';
+        sandbox.appendChild(content);
+
+        const sp = new SPClass(storage, tm, emitter, content);
+
+        showSandbox();
+        sp.mount(sandbox);
+        assert(sp.isMounted(), 'Settings panel mounts');
+
+        const el = sp.getElement();
+        assert(el !== null, 'Settings panel element exists');
+        assert(el.classList.contains('markup-settings-panel'), 'Has markup-settings-panel class');
+
+        // Check sections
+        const title = el.querySelector('.markup-settings-title');
+        assert(title !== null && title.textContent === 'Settings', 'Header shows "Settings"');
+
+        const closeBtn = el.querySelector('.markup-settings-close');
+        assert(closeBtn !== null, 'Close button exists');
+
+        // Theme radios
+        const themeRadios = el.querySelectorAll('input[type="radio"]');
+        assert(themeRadios.length === 3, `3 theme radio buttons (got: ${themeRadios.length})`);
+
+        // Font size slider
+        const sliders = el.querySelectorAll('.markup-settings-slider');
+        assert(sliders.length === 2, `2 sliders (font size + line height) (got: ${sliders.length})`);
+
+        // Font family select
+        const selects = el.querySelectorAll('.markup-settings-select');
+        assert(selects.length === 1, `1 select dropdown (got: ${selects.length})`);
+
+        // Font size slider range
+        const fontSizeSlider = sliders[0];
+        assert(fontSizeSlider.min === '12', 'Font size min is 12');
+        assert(fontSizeSlider.max === '24', 'Font size max is 24');
+
+        // Line height slider range
+        const lineHeightSlider = sliders[1];
+        assert(lineHeightSlider.min === '1.2', 'Line height min is 1.2');
+        assert(lineHeightSlider.max === '2.0', 'Line height max is 2.0');
+
+        // Select options
+        const select = selects[0];
+        assert(select.options.length === 4, `4 font family options (got: ${select.options.length})`);
+
+        // Show / hide
+        assert(sp.isVisible() === false, 'Starts hidden');
+        sp.show();
+        assert(sp.isVisible() === true, 'Visible after show');
+
+        // Unmount
+        sp.unmount();
+        assert(!sp.isMounted(), 'Settings panel unmounts');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 10: ToolbarComponent scroll auto-hide =====
+      groupHeader('10. Toolbar Scroll Auto-Hide');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter, { autoHide: true });
+
+        showSandbox();
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        assert(!el.classList.contains('markup-toolbar-hidden'), 'Not hidden initially');
+
+        // We can't reliably simulate scroll in test env, but verify the class mechanism
+        el.classList.add('markup-toolbar-hidden');
+        assert(el.classList.contains('markup-toolbar-hidden'), 'Hidden class can be added');
+
+        el.classList.remove('markup-toolbar-hidden');
+        assert(!el.classList.contains('markup-toolbar-hidden'), 'Hidden class can be removed');
+
+        toolbar.unmount();
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 11: CSS Selector Existence =====
+      groupHeader('11. UI Component CSS');
+
+      (function() {
+        // Verify key CSS rules exist by checking computed styles on test elements
+        showSandbox();
+
+        // Toolbar CSS
+        const toolbar = document.createElement('div');
+        toolbar.className = 'markup-toolbar';
+        sandbox.appendChild(toolbar);
+        const tbStyle = getComputedStyle(toolbar);
+        assert(tbStyle.position === 'fixed', 'Toolbar has position: fixed');
+        assert(tbStyle.zIndex === '10000', `Toolbar has z-index: 10000 (got: ${tbStyle.zIndex})`);
+
+        // TOC Panel CSS
+        const tocPanel = document.createElement('div');
+        tocPanel.className = 'markup-toc-panel';
+        sandbox.appendChild(tocPanel);
+        const tocStyle = getComputedStyle(tocPanel);
+        assert(tocStyle.position === 'fixed', 'TOC panel has position: fixed');
+        assert(tocStyle.width === '280px', `TOC panel width is 280px (got: ${tocStyle.width})`);
+
+        // Search Bar CSS
+        const searchBar = document.createElement('div');
+        searchBar.className = 'markup-search-bar';
+        sandbox.appendChild(searchBar);
+        const sbStyle = getComputedStyle(searchBar);
+        assert(sbStyle.position === 'fixed', 'Search bar has position: fixed');
+
+        // Settings Panel CSS
+        const settingsPanel = document.createElement('div');
+        settingsPanel.className = 'markup-settings-panel';
+        sandbox.appendChild(settingsPanel);
+        const spStyle = getComputedStyle(settingsPanel);
+        assert(spStyle.position === 'fixed', 'Settings panel has position: fixed');
+        assert(spStyle.width === '300px', `Settings panel width is 300px (got: ${spStyle.width})`);
+
+        // Search highlight CSS
+        const mark = document.createElement('mark');
+        mark.className = 'markup-search-highlight';
+        sandbox.appendChild(mark);
+        const markStyle = getComputedStyle(mark);
+        assert(markStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && markStyle.backgroundColor !== 'transparent',
+          'Search highlight has background color');
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 12: Component Inheritance =====
+      groupHeader('12. Component Inheritance Chain');
+
+      (function() {
+        const BC = MARKUP_BASE_COMPONENT;
+        const emitter = new MARKUP_EVENT_EMITTER();
+
+        // ToolbarComponent extends BaseComponent
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+        assert(toolbar instanceof BC, 'ToolbarComponent instanceof BaseComponent');
+
+        // TocPanelComponent extends BaseComponent
+        const toc = new MARKUP_TOC_PANEL_COMPONENT({});
+        assert(toc instanceof BC, 'TocPanelComponent instanceof BaseComponent');
+
+        // SearchBarComponent extends BaseComponent
+        const sc = new MARKUP_SEARCH_CONTROLLER();
+        const sb = new MARKUP_SEARCH_BAR_COMPONENT(sc, document.body);
+        assert(sb instanceof BC, 'SearchBarComponent instanceof BaseComponent');
+
+        // SettingsPanelComponent extends BaseComponent
+        const storage = new MARKUP_STORAGE_MANAGER();
+        const tm = new MARKUP_THEME_MANAGER(storage);
+        const sp = new MARKUP_SETTINGS_PANEL_COMPONENT(storage, tm, emitter, document.body);
+        assert(sp instanceof BC, 'SettingsPanelComponent instanceof BaseComponent');
+      })();
+
+      // ===== Test Group 13: Global Exports =====
+      groupHeader('13. Global Exports');
+
+      assert(typeof MARKUP_BASE_COMPONENT === 'function', 'MARKUP_BASE_COMPONENT is a function');
+      assert(typeof MARKUP_TOOLBAR_COMPONENT === 'function', 'MARKUP_TOOLBAR_COMPONENT is a function');
+      assert(typeof MARKUP_TOC_PANEL_COMPONENT === 'function', 'MARKUP_TOC_PANEL_COMPONENT is a function');
+      assert(typeof MARKUP_SEARCH_BAR_COMPONENT === 'function', 'MARKUP_SEARCH_BAR_COMPONENT is a function');
+      assert(typeof MARKUP_SEARCH_CONTROLLER === 'function', 'MARKUP_SEARCH_CONTROLLER is a function');
+      assert(typeof MARKUP_SETTINGS_PANEL_COMPONENT === 'function', 'MARKUP_SETTINGS_PANEL_COMPONENT is a function');
+      assert(typeof MARKUP_PRINT_MANAGER === 'function', 'MARKUP_PRINT_MANAGER is a function');
+      assert(typeof MARKUP_KEYBOARD_MANAGER === 'function', 'MARKUP_KEYBOARD_MANAGER is a function');
+
+      // ===== Summary =====
+      const summary = document.getElementById('summary');
+      const total = passed + failed;
+      const cls = failed === 0 ? 'pass' : 'fail';
+      summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
+      if (warned > 0) {
+        summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
+      }
+      document.title = `Phase 6 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 5 — Browser Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; }
+    h1 { font-size: 1.5em; margin-bottom: 8px; }
+    h2 { font-size: 1.1em; margin: 16px 0 8px; color: #8b949e; }
+    .summary { margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #161b22; }
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .warn { color: #d29922; }
+    .test-group { margin-bottom: 12px; }
+    .test-result { padding: 4px 8px; font-size: 0.85em; font-family: monospace; }
+    #sandbox { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Phase 5 — Browser Tests</h1>
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+  <div id="sandbox"></div>
+
+  <!-- Load Phase 2 dependencies -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <!-- Mock chrome.storage for testing outside extension context -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.storage) {
+      const _store = {};
+      window.chrome = window.chrome || {};
+      chrome.storage = {
+        sync: {
+          get: function(keys, callback) {
+            const result = {};
+            if (keys === null) {
+              Object.assign(result, _store);
+            } else if (typeof keys === 'string') {
+              if (_store[keys] !== undefined) result[keys] = _store[keys];
+            } else if (Array.isArray(keys)) {
+              keys.forEach(k => { if (_store[k] !== undefined) result[k] = _store[k]; });
+            } else if (typeof keys === 'object') {
+              for (const [k, v] of Object.entries(keys)) {
+                result[k] = _store[k] !== undefined ? _store[k] : v;
+              }
+            }
+            if (callback) callback(result);
+          },
+          set: function(items, callback) {
+            Object.assign(_store, items);
+            if (callback) callback();
+          },
+          remove: function(keys, callback) {
+            if (typeof keys === 'string') keys = [keys];
+            keys.forEach(k => delete _store[k]);
+            if (callback) callback();
+          }
+        },
+        local: {
+          get: function(keys, callback) { chrome.storage.sync.get(keys, callback); },
+          set: function(items, callback) { chrome.storage.sync.set(items, callback); },
+          remove: function(keys, callback) { chrome.storage.sync.remove(keys, callback); }
+        }
+      };
+      chrome.runtime = chrome.runtime || {};
+      chrome.runtime.lastError = null;
+    }
+  </script>
+
+  <!-- Load StorageManager (Phase 3) -->
+  <script src="../src/core/StorageManager.js"></script>
+
+  <!-- Load ThemeManager (Phase 5) -->
+  <script src="../src/core/ThemeManager.js"></script>
+
+  <!-- Load CSS files for testing -->
+  <link rel="stylesheet" href="../src/styles/variables.css">
+  <link rel="stylesheet" href="../src/styles/themes/light.css">
+  <link rel="stylesheet" href="../src/styles/themes/dark.css">
+  <link rel="stylesheet" href="../src/styles/themes/sepia.css">
+  <link rel="stylesheet" href="../src/styles/typography.css">
+  <link rel="stylesheet" href="../src/content/content.css">
+  <link rel="stylesheet" href="../src/styles/print.css">
+
+  <script>
+    (function() {
+      'use strict';
+
+      let passed = 0;
+      let failed = 0;
+      let warned = 0;
+      const results = document.getElementById('results');
+      const sandbox = document.getElementById('sandbox');
+
+      function log(type, message) {
+        const div = document.createElement('div');
+        div.className = `test-result ${type}`;
+        div.textContent = `  ${type.toUpperCase()}: ${message}`;
+        results.appendChild(div);
+        if (type === 'pass') passed++;
+        else if (type === 'fail') failed++;
+        else warned++;
+      }
+
+      function assert(condition, message) {
+        if (condition) {
+          log('pass', message);
+        } else {
+          log('fail', message);
+          console.error('FAIL:', message);
+        }
+      }
+
+      function groupHeader(name) {
+        const h2 = document.createElement('h2');
+        h2.textContent = name;
+        results.appendChild(h2);
+      }
+
+      function createMarkupContainer() {
+        const container = document.createElement('article');
+        container.className = 'markup-content markup-article';
+        container.id = 'test-markup-content';
+        sandbox.appendChild(container);
+        sandbox.style.display = 'block';
+        return container;
+      }
+
+      function cleanupSandbox() {
+        sandbox.innerHTML = '';
+        sandbox.style.display = 'none';
+        // Reset store
+        if (chrome && chrome.storage && chrome.storage.sync) {
+          chrome.storage.sync.set({ markup_theme: undefined });
+        }
+      }
+
+      // ===== Test Group 1: CSS Custom Properties (variables.css) =====
+      groupHeader('1. CSS Design Tokens (variables.css)');
+
+      (function() {
+        const container = createMarkupContainer();
+        const style = getComputedStyle(container);
+
+        // Test that custom properties exist
+        const props = [
+          '--markup-bg-primary',
+          '--markup-bg-secondary',
+          '--markup-text-primary',
+          '--markup-text-secondary',
+          '--markup-text-link',
+          '--markup-border',
+          '--markup-accent',
+          '--markup-bg-code',
+          '--markup-bg-code-block',
+          '--markup-text-code',
+          '--markup-bg-blockquote',
+          '--markup-border-blockquote',
+          '--markup-bg-table-stripe',
+          '--markup-bg-table-header',
+          '--markup-font-body',
+          '--markup-font-mono',
+          '--markup-font-size-base',
+          '--markup-line-height',
+          '--markup-space-xs',
+          '--markup-space-sm',
+          '--markup-space-md',
+          '--markup-space-lg',
+          '--markup-space-xl',
+          '--markup-space-2xl',
+          '--markup-radius-sm',
+          '--markup-radius-md',
+          '--markup-radius-lg',
+          '--markup-shadow-sm',
+          '--markup-shadow-md',
+          '--markup-transition-fast',
+          '--markup-transition-normal',
+        ];
+
+        for (const prop of props) {
+          const val = style.getPropertyValue(prop).trim();
+          assert(val !== '', `Custom property ${prop} has value: "${val.substring(0, 40)}..."`);
+        }
+
+        // Test specific defaults (matching light theme)
+        const bgPrimary = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bgPrimary === '#ffffff', `--markup-bg-primary defaults to #ffffff (got: ${bgPrimary})`);
+
+        const fontSize = style.getPropertyValue('--markup-font-size-base').trim();
+        assert(fontSize === '16px', `--markup-font-size-base defaults to 16px (got: ${fontSize})`);
+
+        const lineHeight = style.getPropertyValue('--markup-line-height').trim();
+        assert(lineHeight === '1.6', `--markup-line-height defaults to 1.6 (got: ${lineHeight})`);
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 2: Theme Class Toggling =====
+      groupHeader('2. Theme Class Toggling');
+
+      (function() {
+        const container = createMarkupContainer();
+
+        // Light theme
+        container.classList.add('markup-theme-light');
+        let style = getComputedStyle(container);
+        let bg = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bg === '#ffffff', `Light theme: bg-primary is #ffffff (got: ${bg})`);
+
+        // Dark theme
+        container.classList.remove('markup-theme-light');
+        container.classList.add('markup-theme-dark');
+        style = getComputedStyle(container);
+        bg = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bg === '#0d1117', `Dark theme: bg-primary is #0d1117 (got: ${bg})`);
+
+        const darkLink = style.getPropertyValue('--markup-text-link').trim();
+        assert(darkLink === '#58a6ff', `Dark theme: text-link is #58a6ff (got: ${darkLink})`);
+
+        // Sepia theme
+        container.classList.remove('markup-theme-dark');
+        container.classList.add('markup-theme-sepia');
+        style = getComputedStyle(container);
+        bg = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bg === '#f4ecd8', `Sepia theme: bg-primary is #f4ecd8 (got: ${bg})`);
+
+        const sepiaText = style.getPropertyValue('--markup-text-primary').trim();
+        assert(sepiaText === '#433422', `Sepia theme: text-primary is #433422 (got: ${sepiaText})`);
+
+        const sepiaLink = style.getPropertyValue('--markup-text-link').trim();
+        assert(sepiaLink === '#8b5e3c', `Sepia theme: text-link is #8b5e3c (got: ${sepiaLink})`);
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 3: Typography =====
+      groupHeader('3. Typography (typography.css)');
+
+      (function() {
+        const container = createMarkupContainer();
+        container.classList.add('markup-theme-light');
+
+        // Test heading hierarchy
+        const headings = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+        for (const tag of headings) {
+          const el = document.createElement(tag);
+          el.textContent = `Test ${tag}`;
+          container.appendChild(el);
+        }
+
+        const h1Style = getComputedStyle(container.querySelector('h1'));
+        assert(parseFloat(h1Style.fontSize) > 24, `h1 font-size > 24px (got: ${h1Style.fontSize})`);
+        assert(parseInt(h1Style.fontWeight) >= 600, `h1 font-weight >= 600 (got: ${h1Style.fontWeight})`);
+
+        const h2Style = getComputedStyle(container.querySelector('h2'));
+        assert(parseFloat(h2Style.fontSize) > 18, `h2 font-size > 18px (got: ${h2Style.fontSize})`);
+
+        const h3Style = getComputedStyle(container.querySelector('h3'));
+        assert(parseFloat(h3Style.fontSize) > 16, `h3 font-size > 16px (got: ${h3Style.fontSize})`);
+
+        // Test paragraph
+        const p = document.createElement('p');
+        p.textContent = 'Test paragraph';
+        container.appendChild(p);
+        const pStyle = getComputedStyle(p);
+        assert(pStyle.marginBottom !== '0px', `Paragraph has bottom margin (got: ${pStyle.marginBottom})`);
+
+        // Test link styling
+        const a = document.createElement('a');
+        a.href = '#';
+        a.textContent = 'Test link';
+        container.appendChild(a);
+        const aStyle = getComputedStyle(a);
+        assert(aStyle.textDecorationLine === 'none' || aStyle.textDecoration.includes('none'),
+          `Links have no underline by default`);
+
+        // Test blockquote
+        const bq = document.createElement('blockquote');
+        bq.textContent = 'Test blockquote';
+        container.appendChild(bq);
+        const bqStyle = getComputedStyle(bq);
+        assert(bqStyle.borderLeftWidth !== '0px' && bqStyle.borderLeftStyle !== 'none',
+          `Blockquote has left border (got: ${bqStyle.borderLeftWidth} ${bqStyle.borderLeftStyle})`);
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 4: Content Stylesheet =====
+      groupHeader('4. Content Stylesheet (content.css)');
+
+      (function() {
+        const container = createMarkupContainer();
+        container.classList.add('markup-theme-light');
+        const style = getComputedStyle(container);
+
+        // Test max-width
+        assert(style.maxWidth === '900px', `Container max-width is 900px (got: ${style.maxWidth})`);
+
+        // Test table styling
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr><th>Header</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody>';
+        container.appendChild(table);
+        const thStyle = getComputedStyle(container.querySelector('th'));
+        assert(parseInt(thStyle.fontWeight) >= 600, `Table headers are bold (got: ${thStyle.fontWeight})`);
+
+        // Test inline code
+        const code = document.createElement('code');
+        code.textContent = 'inline code';
+        const p = document.createElement('p');
+        p.appendChild(code);
+        container.appendChild(p);
+        const codeStyle = getComputedStyle(code);
+        assert(codeStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && codeStyle.backgroundColor !== 'transparent',
+          `Inline code has background color (got: ${codeStyle.backgroundColor})`);
+
+        // Test code block
+        const pre = document.createElement('pre');
+        const preCode = document.createElement('code');
+        preCode.textContent = 'code block';
+        pre.appendChild(preCode);
+        container.appendChild(pre);
+        const preStyle = getComputedStyle(pre);
+        assert(preStyle.overflowX === 'auto', `Code blocks have overflow-x: auto (got: ${preStyle.overflowX})`);
+
+        // Test image max-width
+        const img = document.createElement('img');
+        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        img.alt = 'test';
+        container.appendChild(img);
+        const imgStyle = getComputedStyle(img);
+        assert(imgStyle.maxWidth === '100%', `Images have max-width: 100% (got: ${imgStyle.maxWidth})`);
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 5: ThemeManager Class API =====
+      groupHeader('5. ThemeManager Class API');
+
+      (function() {
+        const ThemeManagerClass = (typeof MARKUP_THEME_MANAGER !== 'undefined') ? MARKUP_THEME_MANAGER : null;
+        assert(ThemeManagerClass !== null, 'ThemeManager class is globally accessible via MARKUP_THEME_MANAGER');
+
+        // Constructor requires StorageManager
+        let threw = false;
+        try {
+          new ThemeManagerClass(null);
+        } catch (e) {
+          threw = true;
+          assert(e instanceof TypeError, 'Constructor throws TypeError when storageManager is null');
+        }
+        assert(threw, 'Constructor throws when storageManager is missing');
+
+        // Create with mock StorageManager
+        const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+        assert(StorageManagerClass !== null, 'StorageManager class is globally accessible');
+
+        const storage = new StorageManagerClass();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const tm = new ThemeManagerClass(storage, emitter);
+
+        // getAvailableThemes
+        const themes = tm.getAvailableThemes();
+        assert(Array.isArray(themes), 'getAvailableThemes() returns an array');
+        assert(themes.length === 3, `getAvailableThemes() returns 3 themes (got: ${themes.length})`);
+        assert(themes.includes('light'), 'Available themes includes "light"');
+        assert(themes.includes('dark'), 'Available themes includes "dark"');
+        assert(themes.includes('sepia'), 'Available themes includes "sepia"');
+
+        // getTheme before init
+        assert(tm.getTheme() === null, 'getTheme() returns null before init');
+      })();
+
+      // ===== Test Group 6: ThemeManager applyTheme =====
+      groupHeader('6. ThemeManager applyTheme');
+
+      (function() {
+        const container = createMarkupContainer();
+        const storage = new MARKUP_STORAGE_MANAGER();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const tm = new MARKUP_THEME_MANAGER(storage, emitter);
+
+        // Apply light theme
+        tm.applyTheme('light');
+        assert(tm.getTheme() === 'light', 'getTheme() returns "light" after applyTheme("light")');
+        assert(container.classList.contains('markup-theme-light'), 'Container has markup-theme-light class');
+
+        // Apply dark theme
+        tm.applyTheme('dark');
+        assert(tm.getTheme() === 'dark', 'getTheme() returns "dark" after applyTheme("dark")');
+        assert(container.classList.contains('markup-theme-dark'), 'Container has markup-theme-dark class');
+        assert(!container.classList.contains('markup-theme-light'), 'Light class removed after switching to dark');
+
+        // Apply sepia theme
+        tm.applyTheme('sepia');
+        assert(tm.getTheme() === 'sepia', 'getTheme() returns "sepia" after applyTheme("sepia")');
+        assert(container.classList.contains('markup-theme-sepia'), 'Container has markup-theme-sepia class');
+        assert(!container.classList.contains('markup-theme-dark'), 'Dark class removed after switching to sepia');
+
+        // Invalid theme
+        tm.applyTheme('neon');
+        assert(tm.getTheme() === 'sepia', 'getTheme() unchanged after invalid applyTheme("neon")');
+
+        // Verify CSS variables updated
+        const style = getComputedStyle(container);
+        const bg = style.getPropertyValue('--markup-bg-primary').trim();
+        assert(bg === '#f4ecd8', `Sepia bg-primary applied via CSS (got: ${bg})`);
+
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 7: ThemeManager init + persistence =====
+      groupHeader('7. ThemeManager init + persistence');
+
+      (async function() {
+        const container = createMarkupContainer();
+
+        // First: apply dark theme and persist
+        const storage1 = new MARKUP_STORAGE_MANAGER();
+        const tm1 = new MARKUP_THEME_MANAGER(storage1);
+        tm1.applyTheme('dark');
+
+        // Wait for async persist
+        await new Promise(r => setTimeout(r, 100));
+
+        // Second: new ThemeManager, init should load 'dark'
+        const storage2 = new MARKUP_STORAGE_MANAGER();
+        const tm2 = new MARKUP_THEME_MANAGER(storage2);
+        await tm2.init();
+
+        assert(tm2.getTheme() === 'dark', `init() loaded persisted theme "dark" (got: ${tm2.getTheme()})`);
+        assert(container.classList.contains('markup-theme-dark'), 'init() applied persisted dark class');
+
+        cleanupSandbox();
+      })().then(function() {
+
+        // ===== Test Group 8: ThemeManager EventEmitter integration =====
+        groupHeader('8. ThemeManager EventEmitter Integration');
+
+        (function() {
+          const container = createMarkupContainer();
+          const storage = new MARKUP_STORAGE_MANAGER();
+          const emitter = new MARKUP_EVENT_EMITTER();
+          const tm = new MARKUP_THEME_MANAGER(storage, emitter);
+
+          let emittedEvent = null;
+          const EVENTS = MARKUP_CONSTANTS.EVENTS;
+
+          emitter.on(EVENTS.THEME_CHANGED, (data) => {
+            emittedEvent = data;
+          });
+
+          tm.applyTheme('dark');
+          assert(emittedEvent !== null, 'THEME_CHANGED event was emitted');
+          assert(emittedEvent.theme === 'dark', `Event payload has theme: "dark" (got: ${emittedEvent ? emittedEvent.theme : 'null'})`);
+
+          // Reset and test another theme change
+          emittedEvent = null;
+          tm.applyTheme('sepia');
+          assert(emittedEvent !== null, 'THEME_CHANGED event emitted on second change');
+          assert(emittedEvent.theme === 'sepia', `Second event has theme: "sepia" (got: ${emittedEvent ? emittedEvent.theme : 'null'})`);
+
+          cleanupSandbox();
+        })();
+
+        // ===== Test Group 9: Theme colors applied via CSS =====
+        groupHeader('9. Theme Colors Applied via CSS');
+
+        (function() {
+          const container = createMarkupContainer();
+          const storage = new MARKUP_STORAGE_MANAGER();
+          const tm = new MARKUP_THEME_MANAGER(storage);
+
+          // Dark theme
+          tm.applyTheme('dark');
+          let style = getComputedStyle(container);
+          assert(style.getPropertyValue('--markup-bg-primary').trim() === '#0d1117',
+            'Dark theme: --markup-bg-primary = #0d1117');
+          assert(style.getPropertyValue('--markup-text-primary').trim() === '#e6edf3',
+            'Dark theme: --markup-text-primary = #e6edf3');
+          assert(style.getPropertyValue('--markup-accent').trim() === '#58a6ff',
+            'Dark theme: --markup-accent = #58a6ff');
+
+          // Light theme
+          tm.applyTheme('light');
+          style = getComputedStyle(container);
+          assert(style.getPropertyValue('--markup-bg-primary').trim() === '#ffffff',
+            'Light theme: --markup-bg-primary = #ffffff');
+          assert(style.getPropertyValue('--markup-text-primary').trim() === '#24292f',
+            'Light theme: --markup-text-primary = #24292f');
+
+          // Sepia theme
+          tm.applyTheme('sepia');
+          style = getComputedStyle(container);
+          assert(style.getPropertyValue('--markup-border').trim() === '#d4c5a9',
+            'Sepia theme: --markup-border = #d4c5a9');
+          assert(style.getPropertyValue('--markup-accent').trim() === '#b07d4f',
+            'Sepia theme: --markup-accent = #b07d4f');
+
+          cleanupSandbox();
+        })();
+
+        // ===== Test Group 10: Export globals =====
+        groupHeader('10. Global Exports');
+
+        assert(typeof MARKUP_THEME_MANAGER === 'function', 'MARKUP_THEME_MANAGER is a function (class)');
+        assert(typeof MARKUP_STORAGE_MANAGER === 'function', 'MARKUP_STORAGE_MANAGER is a function (class)');
+        assert(typeof MARKUP_EVENT_EMITTER === 'function', 'MARKUP_EVENT_EMITTER is a function (class)');
+        assert(typeof MARKUP_CONSTANTS === 'object', 'MARKUP_CONSTANTS is an object');
+
+        // ===== Summary =====
+        const summary = document.getElementById('summary');
+        const total = passed + failed;
+        const cls = failed === 0 ? 'pass' : 'fail';
+        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
+        if (warned > 0) {
+          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
+        }
+        document.title = `Phase 5 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
+      });
+    })();
+  </script>
+</body>
+</html>

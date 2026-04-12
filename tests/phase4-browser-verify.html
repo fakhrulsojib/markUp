@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 4 — Browser Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 22px; }
+    .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+    .summary {
+      display: flex; gap: 16px; margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px 20px;
+      text-align: center;
+      min-width: 100px;
+    }
+    .stat .num { font-size: 28px; font-weight: 700; }
+    .stat .label { font-size: 12px; color: #8b949e; }
+    .stat.pass .num { color: #3fb950; }
+    .stat.fail .num { color: #f85149; }
+    .stat.total .num { color: #58a6ff; }
+    .stat.skip .num { color: #d29922; }
+
+    .group {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .group-header {
+      background: #1c2128;
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #c9d1d9;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .group-header:hover { background: #21262d; }
+    .group-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+    .group-badge.pass { background: #238636; color: #fff; }
+    .group-badge.fail { background: #da3633; color: #fff; }
+    .group-body { padding: 0; }
+    .group-body.collapsed { display: none; }
+
+    .test {
+      display: flex;
+      align-items: flex-start;
+      padding: 6px 16px;
+      font-size: 13px;
+      border-top: 1px solid #21262d;
+    }
+    .test:first-child { border-top: none; }
+    .test .icon { width: 18px; flex-shrink: 0; margin-right: 8px; margin-top: 1px; }
+    .test.pass .icon::before { content: "✅"; }
+    .test.fail .icon::before { content: "❌"; }
+    .test.skip .icon::before { content: "⏭️"; }
+    .test .name { flex: 1; color: #c9d1d9; }
+    .test.fail .name { color: #f85149; }
+    .test .detail { color: #8b949e; font-size: 11px; margin-top: 2px; }
+    .test .detail.error { color: #f85149; }
+
+    /* Hidden test sandbox */
+    #test-sandbox {
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 800px;
+      height: 600px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <h1>Phase 4 — Browser Tests</h1>
+  <p class="subtitle">Markdown Parsing & Rendering Pipeline</p>
+
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+
+  <!-- Hidden sandbox for DOM tests -->
+  <div id="test-sandbox"></div>
+
+  <!-- Load vendor libraries -->
+  <script src="../vendor/marked.min.js"></script>
+  <script src="../vendor/highlight.min.js"></script>
+
+  <!-- Load Phase 2 utilities -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+
+  <!-- Load Phase 2/3 core -->
+  <script src="../src/core/EventEmitter.js"></script>
+  <script src="../src/core/FileDetector.js"></script>
+
+  <!-- Load Phase 4 modules -->
+  <script src="../src/core/Renderer.js"></script>
+  <script src="../src/core/MarkdownParser.js"></script>
+  <script src="../src/core/HtmlRenderer.js"></script>
+  <script src="../src/core/SyntaxHighlighter.js"></script>
+  <script src="../src/core/TocGenerator.js"></script>
+
+  <script>
+    // ==========================================
+    //  Test Framework
+    // ==========================================
+    const results = [];
+    let currentGroup = '';
+
+    function group(name) {
+      currentGroup = name;
+    }
+
+    function test(name, fn) {
+      try {
+        fn();
+        results.push({ group: currentGroup, name, status: 'pass' });
+      } catch (e) {
+        results.push({ group: currentGroup, name, status: 'fail', error: e.message });
+      }
+    }
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message || 'Assertion failed');
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(
+          (message || 'assertEqual failed') +
+          ` — expected: ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)}`
+        );
+      }
+    }
+
+    function assertContains(str, substr, message) {
+      if (typeof str !== 'string' || !str.includes(substr)) {
+        throw new Error(
+          (message || 'assertContains failed') +
+          ` — "${substr}" not found in "${String(str).substring(0, 200)}..."`
+        );
+      }
+    }
+
+    function assertNotContains(str, substr, message) {
+      if (typeof str === 'string' && str.includes(substr)) {
+        throw new Error(
+          (message || 'assertNotContains failed') +
+          ` — "${substr}" was found but should not be`
+        );
+      }
+    }
+
+    function assertThrows(fn, message) {
+      try {
+        fn();
+        throw new Error((message || 'assertThrows failed') + ' — no error thrown');
+      } catch (e) {
+        if (e.message.includes('assertThrows failed')) throw e;
+      }
+    }
+
+    function assertGreaterThan(actual, expected, message) {
+      if (actual <= expected) {
+        throw new Error(
+          (message || 'assertGreaterThan failed') +
+          ` — ${actual} is not > ${expected}`
+        );
+      }
+    }
+
+    // ==========================================
+    //  Test: MarkdownParser
+    // ==========================================
+    group('MarkdownParser — Construction');
+
+    test('Class exists on globalThis', () => {
+      assert(typeof MARKUP_MARKDOWN_PARSER === 'function', 'MARKUP_MARKDOWN_PARSER not found');
+    });
+
+    test('Constructor creates instance with defaults', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      assert(parser instanceof MARKUP_MARKDOWN_PARSER, 'Not an instance');
+      const opts = parser.getOptions();
+      assertEqual(opts.gfm, true, 'GFM should be enabled by default');
+      assertEqual(opts.breaks, false, 'Breaks should be false by default');
+      assertEqual(opts.silent, true, 'Silent should be true by default');
+    });
+
+    test('Constructor accepts custom options', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER({ breaks: true, gfm: false });
+      const opts = parser.getOptions();
+      assertEqual(opts.breaks, true, 'Custom breaks option');
+      assertEqual(opts.gfm, false, 'Custom gfm option');
+    });
+
+    group('MarkdownParser — parse()');
+
+    test('Parses basic headings', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('# Hello World');
+      assertContains(html, '<h1', 'Should contain h1 tag');
+      assertContains(html, 'Hello World', 'Should contain heading text');
+    });
+
+    test('Parses multiple heading levels', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const md = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
+      const html = parser.parse(md);
+      assertContains(html, '<h1', 'h1');
+      assertContains(html, '<h2', 'h2');
+      assertContains(html, '<h3', 'h3');
+      assertContains(html, '<h4', 'h4');
+      assertContains(html, '<h5', 'h5');
+      assertContains(html, '<h6', 'h6');
+    });
+
+    test('Parses paragraphs', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('Hello world\n\nAnother paragraph');
+      assertContains(html, '<p>', 'Should contain p tags');
+    });
+
+    test('Parses bold and italic', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('**bold** and *italic*');
+      assertContains(html, '<strong>', 'Should contain strong');
+      assertContains(html, '<em>', 'Should contain em');
+    });
+
+    test('Parses links', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('[Google](https://google.com)');
+      assertContains(html, '<a', 'Should contain a tag');
+      assertContains(html, 'https://google.com', 'Should contain href');
+    });
+
+    test('Parses fenced code blocks', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('```javascript\nconst x = 42;\n```');
+      assertContains(html, '<pre>', 'Should contain pre tag');
+      assertContains(html, '<code', 'Should contain code tag');
+      assertContains(html, 'const x = 42;', 'Should contain code content');
+    });
+
+    test('Parses code blocks with language class', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('```python\nprint("hi")\n```');
+      assertContains(html, 'language-python', 'Should have language-python class');
+    });
+
+    test('Parses GFM tables', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+      const html = parser.parse(md);
+      assertContains(html, '<table', 'Should contain table');
+      assertContains(html, '<th', 'Should contain th');
+      assertContains(html, '<td', 'Should contain td');
+    });
+
+    test('Parses GFM task lists', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const md = '- [x] Done\n- [ ] Not done';
+      const html = parser.parse(md);
+      assertContains(html, 'type="checkbox"', 'Should contain checkbox');
+      assertContains(html, 'checked', 'Should have checked attribute');
+    });
+
+    test('Parses GFM strikethrough', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('~~deleted~~');
+      assertContains(html, '<del>', 'Should contain del tag');
+    });
+
+    test('Parses unordered lists', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('- Item 1\n- Item 2\n- Item 3');
+      assertContains(html, '<ul>', 'Should contain ul');
+      assertContains(html, '<li>', 'Should contain li');
+    });
+
+    test('Parses ordered lists', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('1. First\n2. Second\n3. Third');
+      assertContains(html, '<ol>', 'Should contain ol');
+    });
+
+    test('Parses blockquotes', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('> This is a quote');
+      assertContains(html, '<blockquote>', 'Should contain blockquote');
+    });
+
+    test('Parses images', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('![Alt text](image.png)');
+      assertContains(html, '<img', 'Should contain img tag');
+      assertContains(html, 'alt="Alt text"', 'Should have alt attribute');
+    });
+
+    test('Parses horizontal rules', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse('---');
+      assertContains(html, '<hr', 'Should contain hr');
+    });
+
+    test('Returns empty string for null/undefined/empty input', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      assertEqual(parser.parse(null), '', 'null');
+      assertEqual(parser.parse(undefined), '', 'undefined');
+      assertEqual(parser.parse(''), '', 'empty');
+    });
+
+    test('Handles large documents', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const bigMd = '# Big Doc\n\n' + 'Lorem ipsum. '.repeat(1000);
+      const html = parser.parse(bigMd);
+      assert(html.length > 0, 'Should produce output for large documents');
+    });
+
+    group('MarkdownParser — setOption()');
+
+    test('setOption updates parser configuration', () => {
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      parser.setOption('breaks', true);
+      assertEqual(parser.getOptions().breaks, true, 'breaks should be updated');
+    });
+
+    // ==========================================
+    //  Test: Renderer (Abstract)
+    // ==========================================
+    group('Renderer — Abstract Contract');
+
+    test('Class exists on globalThis', () => {
+      assert(typeof MARKUP_RENDERER === 'function', 'MARKUP_RENDERER not found');
+    });
+
+    test('Cannot instantiate directly', () => {
+      assertThrows(() => {
+        new MARKUP_RENDERER('body');
+      }, 'Direct instantiation should throw');
+    });
+
+    test('Subclass can be created', () => {
+      class TestRenderer extends MARKUP_RENDERER {
+        render(content) { /* noop */ }
+        clear() { /* noop */ }
+      }
+      const r = new TestRenderer('body');
+      assert(r instanceof MARKUP_RENDERER, 'Should be instance of Renderer');
+    });
+
+    test('Abstract render() throws', () => {
+      class TestRenderer extends MARKUP_RENDERER {}
+      const r = new TestRenderer('body');
+      assertThrows(() => r.render('test'), 'render() should throw');
+    });
+
+    test('Abstract clear() throws', () => {
+      class TestRenderer extends MARKUP_RENDERER {}
+      const r = new TestRenderer('body');
+      assertThrows(() => r.clear(), 'clear() should throw');
+    });
+
+    test('getContainer() returns element', () => {
+      class TestRenderer extends MARKUP_RENDERER {
+        render() {}
+        clear() {}
+      }
+      const r = new TestRenderer('body');
+      const el = r.getContainer();
+      assertEqual(el, document.body, 'Should return body element');
+    });
+
+    // ==========================================
+    //  Test: HtmlRenderer
+    // ==========================================
+    group('HtmlRenderer — Construction');
+
+    test('Class exists on globalThis', () => {
+      assert(typeof MARKUP_HTML_RENDERER === 'function', 'MARKUP_HTML_RENDERER not found');
+    });
+
+    test('Extends Renderer', () => {
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      assert(r instanceof MARKUP_RENDERER, 'Should extend Renderer');
+    });
+
+    test('Creates article container', () => {
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      const container = r.getContentContainer();
+      assertEqual(container.tagName, 'ARTICLE', 'Should create article element');
+      assert(container.classList.contains('markup-content'), 'Should have markup-content class');
+    });
+
+    group('HtmlRenderer — render()');
+
+    test('Renders HTML into the mount point', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p>Hello World</p>');
+      const content = sandbox.querySelector('.markup-content');
+      assert(content, 'Should have markup-content container');
+      assertContains(content.innerHTML, 'Hello World', 'Should contain rendered text');
+    });
+
+    test('Strips script tags (via Sanitizer)', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p>Safe</p><scr' + 'ipt>alert("xss")</scr' + 'ipt>');
+      const content = sandbox.querySelector('.markup-content');
+      assertNotContains(content.innerHTML, '<script', 'Should strip script tags');
+      assertContains(content.innerHTML, 'Safe', 'Should keep safe content');
+    });
+
+    test('Strips event handlers (via Sanitizer)', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p onclick="alert(1)">Click me</p>');
+      const content = sandbox.querySelector('.markup-content');
+      assertNotContains(content.innerHTML, 'onclick', 'Should strip onclick');
+    });
+
+    test('Strips iframe tags (via Sanitizer)', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p>Text</p><iframe src="evil.com"></iframe>');
+      const content = sandbox.querySelector('.markup-content');
+      assertNotContains(content.innerHTML, '<iframe', 'Should strip iframe');
+    });
+
+    test('Preserves safe tags', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<h1>Title</h1><p><strong>Bold</strong> and <em>italic</em></p>');
+      const content = sandbox.querySelector('.markup-content');
+      assertContains(content.innerHTML, '<h1>', 'h1 preserved');
+      assertContains(content.innerHTML, '<strong>', 'strong preserved');
+      assertContains(content.innerHTML, '<em>', 'em preserved');
+    });
+
+    test('render() replaces previous content', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p>First</p>');
+      r.render('<p>Second</p>');
+      const content = sandbox.querySelector('.markup-content');
+      assertNotContains(content.innerHTML, 'First', 'Old content removed');
+      assertContains(content.innerHTML, 'Second', 'New content present');
+    });
+
+    group('HtmlRenderer — clear()');
+
+    test('clear() removes all content', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render('<p>Content here</p>');
+      r.clear();
+      const container = r.getContentContainer();
+      assertEqual(container.children.length, 0, 'Should have no children after clear');
+    });
+
+    test('Handles empty/null render input gracefully', () => {
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.render(null);
+      r.render('');
+      r.render(undefined);
+      // Should not throw
+      assert(true, 'Graceful handling');
+    });
+
+    group('HtmlRenderer — injectStyles()');
+
+    test('Injects styles into document head', () => {
+      const r = new MARKUP_HTML_RENDERER('#test-sandbox');
+      r.injectStyles('body { color: red; }', 'test-phase4-styles');
+      const style = document.getElementById('test-phase4-styles');
+      assert(style, 'Style element should exist');
+      assertContains(style.textContent, 'color: red', 'Should contain CSS');
+      // Cleanup
+      style.remove();
+    });
+
+    // ==========================================
+    //  Test: SyntaxHighlighter
+    // ==========================================
+    group('SyntaxHighlighter — Construction');
+
+    test('Class exists on globalThis', () => {
+      assert(typeof MARKUP_SYNTAX_HIGHLIGHTER === 'function', 'MARKUP_SYNTAX_HIGHLIGHTER not found');
+    });
+
+    test('Constructor loads supported languages', () => {
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      const langs = sh.getSupportedLanguages();
+      assertGreaterThan(langs.size, 0, 'Should have loaded languages');
+    });
+
+    test('Common languages are supported', () => {
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      assert(sh.isLanguageSupported('javascript'), 'javascript');
+      assert(sh.isLanguageSupported('python'), 'python');
+      assert(sh.isLanguageSupported('bash'), 'bash');
+      assert(sh.isLanguageSupported('xml'), 'xml/html');
+    });
+
+    group('SyntaxHighlighter — highlightAll()');
+
+    test('Highlights code blocks in a container', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-javascript';
+      code.textContent = 'const x = 42;';
+      pre.appendChild(code);
+      sandbox.appendChild(pre);
+
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      const count = sh.highlightAll(sandbox);
+      assertEqual(count, 1, 'Should highlight 1 block');
+      assert(code.classList.contains('hljs'), 'Should add hljs class');
+      assertEqual(code.dataset.highlighted, 'yes', 'Should mark as highlighted');
+    });
+
+    test('Detects language from class', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-python';
+      code.textContent = 'def hello():\n    print("hi")';
+      pre.appendChild(code);
+      sandbox.appendChild(pre);
+
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      sh.highlightAll(sandbox);
+      assertEqual(code.dataset.language, 'python', 'Should detect python');
+    });
+
+    test('Highlights with language-* class', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-bash';
+      code.textContent = 'echo "hello"';
+      pre.appendChild(code);
+      sandbox.appendChild(pre);
+
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      sh.highlightAll(sandbox);
+      assertContains(code.innerHTML, '<span', 'Should add highlight spans');
+    });
+
+    test('Auto-detects language when no class', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.textContent = 'function hello() {\n  return "world";\n}';
+      pre.appendChild(code);
+      sandbox.appendChild(pre);
+
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER({ autoDetect: true });
+      sh.highlightAll(sandbox);
+      assert(code.classList.contains('hljs'), 'Should highlight auto-detected code');
+    });
+
+    test('Does not re-highlight already highlighted elements', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-javascript';
+      code.textContent = 'let a = 1;';
+      pre.appendChild(code);
+      sandbox.appendChild(pre);
+
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      sh.highlightAll(sandbox);
+      const firstHtml = code.innerHTML;
+      sh.highlightAll(sandbox); // Second call
+      assertEqual(code.innerHTML, firstHtml, 'Should not change on re-highlight');
+    });
+
+    test('Returns 0 for null container', () => {
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      assertEqual(sh.highlightAll(null), 0, 'Null container');
+    });
+
+    test('Returns 0 for container with no code blocks', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<p>No code here</p>';
+      const sh = new MARKUP_SYNTAX_HIGHLIGHTER();
+      assertEqual(sh.highlightAll(sandbox), 0, 'No code blocks');
+    });
+
+    // ==========================================
+    //  Test: TocGenerator
+    // ==========================================
+    group('TocGenerator — Construction');
+
+    test('Class exists on globalThis', () => {
+      assert(typeof MARKUP_TOC_GENERATOR === 'function', 'MARKUP_TOC_GENERATOR not found');
+    });
+
+    test('Constructor initializes empty state', () => {
+      const toc = new MARKUP_TOC_GENERATOR();
+      assertEqual(toc.getHeadings().length, 0, 'Empty headings');
+      assertEqual(toc.getTree().length, 0, 'Empty tree');
+    });
+
+    group('TocGenerator — generate()');
+
+    test('Extracts headings from DOM', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>Title</h1><h2>Section A</h2><h2>Section B</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(sandbox);
+      assertEqual(headings.length, 3, 'Should find 3 headings');
+      assertEqual(headings[0].level, 1, 'First heading level');
+      assertEqual(headings[0].text, 'Title', 'First heading text');
+      assertEqual(headings[1].level, 2, 'Second heading level');
+    });
+
+    test('Assigns IDs to headings without them', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>My Title</h1><h2>Section One</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+
+      const h1 = sandbox.querySelector('h1');
+      const h2 = sandbox.querySelector('h2');
+      assert(h1.id, 'h1 should have an ID');
+      assert(h2.id, 'h2 should have an ID');
+    });
+
+    test('Generates URL-safe slugs', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>Hello World</h1>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+
+      const h1 = sandbox.querySelector('h1');
+      assertEqual(h1.id, 'hello-world', 'Should generate slug');
+    });
+
+    test('Handles duplicate heading texts', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h2>API</h2><h2>API</h2><h2>API</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(sandbox);
+
+      // All should have unique IDs
+      const ids = new Set(headings.map(h => h.id));
+      assertEqual(ids.size, 3, 'All IDs should be unique');
+    });
+
+    test('Preserves existing IDs', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1 id="custom-id">Title</h1>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(sandbox);
+      assertEqual(headings[0].id, 'custom-id', 'Should preserve existing ID');
+    });
+
+    test('Returns empty for null container', () => {
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(null);
+      assertEqual(headings.length, 0, 'Null container');
+    });
+
+    test('Returns empty for container with no headings', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<p>No headings here</p>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(sandbox);
+      assertEqual(headings.length, 0, 'No headings');
+    });
+
+    group('TocGenerator — _buildTree()');
+
+    test('Builds correct tree from h1, h2, h2, h3, h2', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>T</h1><h2>A</h2><h2>B</h2><h3>B1</h3><h2>C</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+      const tree = toc.getTree();
+
+      assertEqual(tree.length, 1, 'Root should have 1 top node (h1)');
+      assertEqual(tree[0].children.length, 3, 'h1 should have 3 h2 children');
+      assertEqual(tree[0].children[1].children.length, 1, 'Second h2 should have 1 h3 child');
+    });
+
+    test('Tree handles h2-only documents', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h2>A</h2><h2>B</h2><h2>C</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+      const tree = toc.getTree();
+
+      assertEqual(tree.length, 3, 'All h2s should be top-level');
+    });
+
+    test('Tree handles deeply nested h3 under h2 under h1', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>T</h1><h2>S1</h2><h3>S1a</h3><h3>S1b</h3>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+      const tree = toc.getTree();
+
+      assertEqual(tree[0].children[0].children.length, 2, 'h2 should have 2 h3 children');
+    });
+
+    group('TocGenerator — toHtml()');
+
+    test('Generates HTML from tree', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>Title</h1><h2>Section</h2>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+      const html = toc.toHtml();
+
+      assertContains(html, '<ul', 'Should contain ul');
+      assertContains(html, '<li', 'Should contain li');
+      assertContains(html, '<a', 'Should contain links');
+      assertContains(html, 'Title', 'Should contain heading text');
+      assertContains(html, 'Section', 'Should contain heading text');
+    });
+
+    test('Links have correct href', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '<h1>My Title</h1>';
+
+      const toc = new MARKUP_TOC_GENERATOR();
+      toc.generate(sandbox);
+      const html = toc.toHtml();
+
+      assertContains(html, '#my-title', 'Should have #slug href');
+    });
+
+    test('Returns empty string for empty tree', () => {
+      const toc = new MARKUP_TOC_GENERATOR();
+      assertEqual(toc.toHtml(), '', 'Empty tree gives empty HTML');
+    });
+
+    // ==========================================
+    //  Test: Full Pipeline Integration
+    // ==========================================
+    group('Full Pipeline Integration');
+
+    test('Parse → Render → Highlight (headings + code)', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+
+      const md = '# Hello\n\n```javascript\nconst x = 42;\n```\n\n## World';
+
+      // Parse
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse(md);
+      assertContains(html, '<h1', 'Parse: h1');
+      assertContains(html, '<code', 'Parse: code block');
+
+      // Render
+      const renderer = new MARKUP_HTML_RENDERER('#test-sandbox');
+      renderer.render(html);
+      const content = renderer.getContentContainer();
+      assert(content.querySelector('h1'), 'Render: h1 present');
+      assert(content.querySelector('pre code'), 'Render: code present');
+
+      // Highlight
+      const highlighter = new MARKUP_SYNTAX_HIGHLIGHTER();
+      const count = highlighter.highlightAll(content);
+      assertEqual(count, 1, 'Highlight: 1 code block');
+
+      // TOC
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(content);
+      assertEqual(headings.length, 2, 'TOC: 2 headings');
+    });
+
+    test('Parse → Render → TOC with complex document', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+
+      const md = [
+        '# Main Title',
+        '## Section 1',
+        'Some text here.',
+        '### Sub-section 1.1',
+        '## Section 2',
+        '| Col A | Col B |',
+        '|-------|-------|',
+        '| 1     | 2     |',
+        '## Section 3',
+        '- [x] Done',
+        '- [ ] Not done',
+        '~~deleted text~~',
+      ].join('\n');
+
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse(md);
+
+      const renderer = new MARKUP_HTML_RENDERER('#test-sandbox');
+      renderer.render(html);
+      const content = renderer.getContentContainer();
+
+      // Verify GFM features
+      assert(content.querySelector('table'), 'Table rendered');
+      assert(content.querySelector('input[type="checkbox"]'), 'Task list rendered');
+      assert(content.querySelector('del'), 'Strikethrough rendered');
+
+      // Verify TOC
+      const toc = new MARKUP_TOC_GENERATOR();
+      const headings = toc.generate(content);
+      assertEqual(headings.length, 5, 'Should find h1 + h2 + h3 + h2 + h2 = 5 headings');
+
+      const tree = toc.getTree();
+      assert(tree.length >= 1, 'Tree should have top-level nodes');
+    });
+
+    test('Sanitizer blocks XSS through full pipeline', () => {
+      const sandbox = document.getElementById('test-sandbox');
+      sandbox.innerHTML = '';
+
+      const md = '# Safe Title\n\n<scr' + 'ipt>alert("xss")</scr' + 'ipt>\n\n<img src=x onerror=alert(1)>\n\nNormal text.';
+
+      const parser = new MARKUP_MARKDOWN_PARSER();
+      const html = parser.parse(md);
+
+      const renderer = new MARKUP_HTML_RENDERER('#test-sandbox');
+      renderer.render(html);
+      const content = renderer.getContentContainer();
+
+      assertNotContains(content.innerHTML, '<script', 'No script tags');
+      assertNotContains(content.innerHTML, 'onerror', 'No event handlers');
+      assertContains(content.innerHTML, 'Safe Title', 'Safe content preserved');
+      assertContains(content.innerHTML, 'Normal text', 'Text preserved');
+    });
+
+    // ==========================================
+    //  Render Results
+    // ==========================================
+    function renderResults() {
+      const groups = {};
+      let totalPass = 0, totalFail = 0, totalSkip = 0;
+
+      for (const r of results) {
+        if (!groups[r.group]) groups[r.group] = [];
+        groups[r.group].push(r);
+        if (r.status === 'pass') totalPass++;
+        else if (r.status === 'fail') totalFail++;
+        else totalSkip++;
+      }
+
+      const total = results.length;
+      document.getElementById('summary').innerHTML = `
+        <div class="stat total"><div class="num">${total}</div><div class="label">Total</div></div>
+        <div class="stat pass"><div class="num">${totalPass}</div><div class="label">Passed</div></div>
+        <div class="stat fail"><div class="num">${totalFail}</div><div class="label">Failed</div></div>
+        <div class="stat skip"><div class="num">${totalSkip}</div><div class="label">Skipped</div></div>
+      `;
+
+      let html = '';
+      for (const [groupName, tests] of Object.entries(groups)) {
+        const groupFails = tests.filter(t => t.status === 'fail').length;
+        const badgeClass = groupFails > 0 ? 'fail' : 'pass';
+        const badgeText = groupFails > 0
+          ? `${groupFails} failed`
+          : `${tests.length} passed`;
+        const bodyClass = groupFails > 0 ? '' : 'collapsed';
+
+        html += `
+          <div class="group">
+            <div class="group-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+              <span>${groupName}</span>
+              <span class="group-badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div class="group-body ${bodyClass}">
+              ${tests.map(t => `
+                <div class="test ${t.status}">
+                  <span class="icon"></span>
+                  <span class="name">
+                    ${t.name}
+                    ${t.error ? `<div class="detail error">${t.error}</div>` : ''}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById('results').innerHTML = html;
+
+      // Clean up sandbox
+      document.getElementById('test-sandbox').innerHTML = '';
+
+      // Log summary
+      console.log(`Phase 4 Tests: ${totalPass}/${total} passed, ${totalFail} failed`);
+    }
+
+    renderResults();
+  </script>
+</body>
+</html>

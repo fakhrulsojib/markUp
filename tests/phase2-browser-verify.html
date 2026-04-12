@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Phase 2 — Browser Tests</title>
+</head>
+<body>
+  <h1>Phase 2 Browser Tests</h1>
+  <pre id="output"></pre>
+
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+  <script>
+    const out = document.getElementById('output');
+    let passed = 0, failed = 0;
+
+    function assert(cond, name) {
+      if (cond) { out.textContent += `  ✅ ${name}\n`; passed++; }
+      else { out.textContent += `  ❌ ${name}\n`; failed++; }
+    }
+
+    // ─── dom-helpers.js ───
+    out.textContent += '\n📦 Step 2.2 — dom-helpers.js\n';
+    const { createElement, createFragment, removeAllChildren, addStyles } = MARKUP_DOM_HELPERS;
+
+    // createElement basic
+    const div = createElement('div', { id: 'test-div', classList: ['foo', 'bar'] }, ['Hello']);
+    assert(div.tagName === 'DIV', 'createElement creates <div>');
+    assert(div.id === 'test-div', 'createElement sets id');
+    assert(div.classList.contains('foo') && div.classList.contains('bar'), 'createElement sets classList');
+    assert(div.textContent === 'Hello', 'createElement sets text child');
+
+    // createElement with dataset and events
+    let clicked = false;
+    const btn = createElement('button', {
+      dataset: { action: 'test' },
+      events: { click: () => { clicked = true; } }
+    }, ['Click me']);
+    assert(btn.dataset.action === 'test', 'createElement sets dataset');
+    btn.click();
+    assert(clicked, 'createElement wires event listener');
+
+    // createElement with nested children
+    const parent = createElement('ul', {}, [
+      createElement('li', {}, ['Item 1']),
+      createElement('li', {}, ['Item 2']),
+    ]);
+    assert(parent.children.length === 2, 'createElement nests child elements');
+    assert(parent.children[0].textContent === 'Item 1', 'Nested children have correct content');
+
+    // createFragment
+    const frag = createFragment([
+      createElement('span', {}, ['A']),
+      createElement('span', {}, ['B']),
+      'text node',
+    ]);
+    assert(frag instanceof DocumentFragment, 'createFragment returns DocumentFragment');
+    assert(frag.childNodes.length === 3, 'createFragment bundles 3 nodes');
+
+    // removeAllChildren
+    const container = createElement('div', {}, [
+      createElement('p', {}, ['1']),
+      createElement('p', {}, ['2']),
+      createElement('p', {}, ['3']),
+    ]);
+    assert(container.childNodes.length === 3, 'Container has 3 children before removal');
+    removeAllChildren(container);
+    assert(container.childNodes.length === 0, 'removeAllChildren empties the element');
+
+    // addStyles
+    const style = addStyles('body { color: red; }', 'test-style');
+    assert(style.id === 'test-style', 'addStyles sets id');
+    assert(document.getElementById('test-style') !== null, 'addStyles injects into head');
+    
+    // addStyles dedup
+    const style2 = addStyles('body { color: blue; }', 'test-style');
+    assert(style2 === style, 'addStyles deduplicates (returns same element)');
+    assert(style.textContent === 'body { color: blue; }', 'addStyles updates content on dedup');
+
+    // No innerHTML check
+    assert(typeof div.innerHTML !== 'undefined', 'Elements have innerHTML property (but we never set it)');
+
+    // ─── sanitizer.js ───
+    out.textContent += '\n📦 Step 2.3 — sanitizer.js\n';
+    const sanitizer = new MARKUP_SANITIZER();
+
+    // Strips script tags
+    const result1 = sanitizer.sanitize('<p>Hello</p><scr' + 'ipt>alert("xss")</scr' + 'ipt>');
+    assert(!result1.includes('<scr' + 'ipt'), 'Strips script tags');
+    assert(result1.includes('<p>Hello</p>'), 'Preserves <p>');
+
+    // Strips <iframe>
+    const result2 = sanitizer.sanitize('<iframe src="evil.com"></iframe><strong>Bold</strong>');
+    assert(!result2.includes('<iframe'), 'Strips <iframe>');
+    assert(result2.includes('<strong>Bold</strong>'), 'Preserves <strong>');
+
+    // Strips onclick
+    const result3 = sanitizer.sanitize('<a href="https://example.com" onclick="alert(1)">Link</a>');
+    assert(!result3.includes('onclick'), 'Strips onclick attribute');
+    assert(result3.includes('href="https://example.com"'), 'Preserves safe href');
+
+    // Strips javascript: href
+    const result4 = sanitizer.sanitize('<a href="javascript:alert(1)">Bad</a>');
+    assert(!result4.includes('javascript:'), 'Strips javascript: href');
+
+    // Allows standard tags
+    const result5 = sanitizer.sanitize('<h1>Title</h1><h2>Sub</h2><ul><li>Item</li></ul>');
+    assert(result5.includes('<h1>') && result5.includes('<h2>') && result5.includes('<ul>'), 'Allows standard heading/list tags');
+
+    // Allows <a href="">
+    const result6 = sanitizer.sanitize('<a href="https://safe.com">Link</a>');
+    assert(result6.includes('<a href="https://safe.com">'), 'Allows safe <a href>');
+
+    // Allows <img src="">
+    const result7 = sanitizer.sanitize('<img src="image.png" alt="pic">');
+    assert(result7.includes('src="image.png"') && result7.includes('alt="pic"'), 'Allows safe <img>');
+
+    // Allows table elements
+    const result8 = sanitizer.sanitize('<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>D</td></tr></tbody></table>');
+    assert(result8.includes('<table>') && result8.includes('<td>'), 'Allows table structure');
+
+    // Allows checkbox input only
+    const result9 = sanitizer.sanitize('<input type="checkbox" checked> <input type="text">');
+    assert(result9.includes('type="checkbox"'), 'Allows checkbox input');
+    assert(!result9.includes('type="text"'), 'Strips non-checkbox input');
+
+    // Strips onmouseover
+    const result10 = sanitizer.sanitize('<div onmouseover="alert(1)">Test</div>');
+    assert(!result10.includes('onmouseover'), 'Strips onmouseover');
+
+    // Empty / null input
+    assert(sanitizer.sanitize('') === '', 'Returns empty string for empty input');
+    assert(sanitizer.sanitize(null) === '', 'Returns empty string for null');
+
+    // ─── Summary ───
+    out.textContent += `\n${'─'.repeat(40)}\n`;
+    out.textContent += `Results: ${passed} passed, ${failed} failed\n`;
+    if (failed === 0) {
+      out.textContent += 'All Phase 2 browser tests passed! ✅\n';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+/**
+ * MarkUp — Typography
+ *
+ * Font stacks, heading scale, and text element styling.
+ * All rules scoped under .markup-content using CSS custom properties
+ * from variables.css for full theme compatibility.
+ *
+ * Heading scale uses ~1.25 modular ratio.
+ */
+
+/* ─── Base Typography ─────────────────────────────────────────────── */
+.markup-content {
+  font-family: var(--markup-font-body);
+  font-size: var(--markup-font-size-base);
+  line-height: var(--markup-line-height);
+  color: var(--markup-text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Headings ────────────────────────────────────────────────────── */
+.markup-content h1,
+.markup-content h2,
+.markup-content h3,
+.markup-content h4,
+.markup-content h5,
+.markup-content h6 {
+  margin-top: var(--markup-space-lg);
+  margin-bottom: var(--markup-space-md);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--markup-text-primary);
+}
+
+.markup-content h1 {
+  font-size: 2em;
+  font-weight: 700;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--markup-border);
+}
+
+.markup-content h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--markup-border);
+}
+
+.markup-content h3 {
+  font-size: 1.25em;
+}
+
+.markup-content h4 {
+  font-size: 1em;
+}
+
+.markup-content h5 {
+  font-size: 0.875em;
+}
+
+.markup-content h6 {
+  font-size: 0.85em;
+  color: var(--markup-text-secondary);
+}
+
+/* First heading should not have top margin */
+.markup-content > h1:first-child,
+.markup-content > h2:first-child,
+.markup-content > h3:first-child,
+.markup-content > h4:first-child,
+.markup-content > h5:first-child,
+.markup-content > h6:first-child {
+  margin-top: 0;
+}
+
+/* ─── Paragraphs ──────────────────────────────────────────────────── */
+.markup-content p {
+  margin-top: 0;
+  margin-bottom: var(--markup-space-md);
+  line-height: var(--markup-line-height);
+}
+
+/* ─── Links ───────────────────────────────────────────────────────── */
+.markup-content a {
+  color: var(--markup-text-link);
+  text-decoration: none;
+  transition: color var(--markup-transition-fast);
+}
+
+.markup-content a:hover {
+  text-decoration: underline;
+}
+
+.markup-content a:focus-visible {
+  outline: 2px solid var(--markup-accent);
+  outline-offset: 2px;
+  border-radius: var(--markup-radius-sm);
+}
+
+/* ─── Lists ───────────────────────────────────────────────────────── */
+.markup-content ul,
+.markup-content ol {
+  margin-top: 0;
+  margin-bottom: var(--markup-space-md);
+  padding-left: 2em;
+}
+
+.markup-content li {
+  margin-bottom: var(--markup-space-xs);
+}
+
+.markup-content li > p {
+  margin-top: var(--markup-space-md);
+}
+
+.markup-content li + li {
+  margin-top: var(--markup-space-xs);
+}
+
+/* Nested lists */
+.markup-content ul ul,
+.markup-content ul ol,
+.markup-content ol ol,
+.markup-content ol ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* ─── Definition Lists ────────────────────────────────────────────── */
+.markup-content dl {
+  margin-top: 0;
+  margin-bottom: var(--markup-space-md);
+  padding: 0;
+}
+
+.markup-content dt {
+  font-weight: 600;
+  margin-top: var(--markup-space-md);
+}
+
+.markup-content dd {
+  margin-left: var(--markup-space-lg);
+  margin-bottom: var(--markup-space-sm);
+}
+
+/* ─── Blockquotes ─────────────────────────────────────────────────── */
+.markup-content blockquote {
+  margin: 0 0 var(--markup-space-md) 0;
+  padding: var(--markup-space-sm) var(--markup-space-md);
+  border-left: 4px solid var(--markup-border-blockquote);
+  background: var(--markup-bg-blockquote);
+  color: var(--markup-text-secondary);
+  border-radius: 0 var(--markup-radius-sm) var(--markup-radius-sm) 0;
+}
+
+.markup-content blockquote > :first-child {
+  margin-top: 0;
+}
+
+.markup-content blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Horizontal Rules ────────────────────────────────────────────── */
+.markup-content hr {
+  height: 0;
+  margin: var(--markup-space-lg) 0;
+  padding: 0;
+  border: 0;
+  border-top: 2px solid var(--markup-border);
+  overflow: hidden;
+}
+
+/* ─── Strong, Em, Del ─────────────────────────────────────────────── */
+.markup-content strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.markup-content em {
+  font-style: italic;
+  color: inherit;
+}
+
+.markup-content del,
+.markup-content s {
+  text-decoration: line-through;
+  color: var(--markup-text-secondary);
+}
+
+/* ─── Mark (Highlight) ────────────────────────────────────────────── */
+.markup-content mark {
+  background-color: rgba(255, 230, 0, 0.35);
+  padding: 0.1em 0.2em;
+  border-radius: var(--markup-radius-sm);
+}
+
+/* ─── Abbreviations ───────────────────────────────────────────────── */
+.markup-content abbr[title] {
+  text-decoration: underline dotted;
+  cursor: help;
+  border-bottom: none;
+}
+
+/* ─── Superscript / Subscript ─────────────────────────────────────── */
+.markup-content sup,
+.markup-content sub {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.markup-content sup {
+  top: -0.5em;
+}
+
+.markup-content sub {
+  bottom: -0.25em;
+}
+
+/* ─── Details / Summary ───────────────────────────────────────────── */
+.markup-content details {
+  margin-bottom: var(--markup-space-md);
+}
+
+.markup-content summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: list-item;
+}
+
+.markup-content summary:hover {
+  color: var(--markup-text-link);
+}
+
+/* ─── Figure / Figcaption ─────────────────────────────────────────── */
+.markup-content figure {
+  margin: var(--markup-space-md) 0;
+}
+
+.markup-content figcaption {
+  font-size: 0.875em;
+  color: var(--markup-text-secondary);
+  text-align: center;
+  margin-top: var(--markup-space-sm);
+}
