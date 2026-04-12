@@ -221,6 +221,57 @@ messageBus.listen('APPLY_THEME', async (payload, sender) => {
   return { success: true };
 });
 
+/**
+ * Handle 'APPLY_FONT_SIZE' action — relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_FONT_SIZE', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_FONT_SIZE', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.log('MarkUp: Font size relay attempted.');
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_LINE_HEIGHT' action — relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_LINE_HEIGHT', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_LINE_HEIGHT', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.log('MarkUp: Line height relay attempted.');
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_FONT_FAMILY' action — relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_FONT_FAMILY', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_FONT_FAMILY', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.log('MarkUp: Font family relay attempted.');
+  }
+  return { success: true };
+});
+
 // --- Utility Functions ---
 
 /**

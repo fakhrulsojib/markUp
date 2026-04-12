@@ -60,3 +60,36 @@
   --markup-transition-fast: 150ms ease;
   --markup-transition-normal: 300ms ease;
 }
+
+/**
+ * Body-level variable definitions.
+ *
+ * Fixed-position UI elements (toolbar, TOC panel, settings panel, search bar)
+ * are mounted as direct children of <body>, NOT inside .markup-content.
+ * They need access to the same CSS custom properties. This selector mirrors
+ * the .markup-content defaults so var(--markup-*) works on body children.
+ *
+ * Theme overrides are provided in each theme stylesheet (light.css, dark.css,
+ * sepia.css) via body.markup-body.markup-theme-* selectors.
+ */
+body.markup-body {
+  /* ─── Colors ────────────────────────────────────────────────────── */
+  --markup-bg-primary: #ffffff;
+  --markup-bg-secondary: #f6f8fa;
+  --markup-text-primary: #24292f;
+  --markup-text-secondary: #656d76;
+  --markup-text-link: #0969da;
+  --markup-border: #d0d7de;
+  --markup-accent: #0969da;
+
+  /* ─── Decorative ────────────────────────────────────────────────── */
+  --markup-radius-sm: 4px;
+  --markup-radius-md: 6px;
+  --markup-radius-lg: 8px;
+  --markup-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --markup-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  /* ─── Transitions ───────────────────────────────────────────────── */
+  --markup-transition-fast: 150ms ease;
+  --markup-transition-normal: 300ms ease;
+}

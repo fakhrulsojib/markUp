@@ -1296,3 +1296,138 @@
 
 **Issues / Deviations:** None.
 ---
+
+### [Step 8.1] — Theme-Aware UI Panels & Toolbar
+**Date:** 2026-04-13
+**Status:** Completed
+
+**What was implemented:**
+- Added `body.markup-body` CSS custom property definitions in `variables.css` — duplicating the `.markup-content` variables at body level so fixed-position UI elements (toolbar, TOC panel, settings panel, search bar) can inherit theme values.
+- Added `body.markup-body.markup-theme-light`, `body.markup-body.markup-theme-dark`, and `body.markup-body.markup-theme-sepia` overrides in their respective theme CSS files (`light.css`, `dark.css`, `sepia.css`).
+- Updated `ThemeManager.applyTheme()` to also add/remove `markup-theme-*` classes on `document.body` (in addition to `.markup-content`).
+- Removed hardcoded `rgba(255, 255, 255, 0.85)` toolbar background and the non-functional `.markup-theme-dark .markup-toolbar` / `.markup-theme-sepia .markup-toolbar` descendant selectors from `ui-components.css`.
+- Replaced with `background-color: var(--markup-bg-primary, #ffffff)` — now fully theme-aware via CSS custom properties.
+- Added `color 150ms ease` to toolbar button transitions for smoother theme switches.
+
+**Technical decisions:**
+- The toolbar, TOC panel, settings panel, and search bar are mounted as direct children of `<body>`, NOT inside `.markup-content`. CSS custom properties defined on `.markup-content` are not inherited by sibling/ancestor elements. Solution: duplicate variables at `body.markup-body` level. This is the cleanest approach — no DOM restructuring required, and all existing `var(--markup-*, fallback)` patterns in UI CSS work automatically.
+- The old `.markup-theme-dark .markup-toolbar` rules were dead code — they used descendant selectors, but `.markup-toolbar` is not a descendant of `.markup-content`. Removing them has no visual impact.
+- ThemeManager now calls `_removeAllThemeClasses(document.body)` before adding the new theme class to body. This ensures clean switching between themes at the body level.
+
+**Current state:**
+- All UI chrome elements (toolbar, TOC, settings, search) inherit the active theme's colors, borders, shadows, and radii via CSS custom properties.
+- Theme switching applies palette updates to both content and UI chrome simultaneously.
+
+**Issues / Deviations:**
+- None.
+---
+
+### [Step 8.2] — Draggable Toolbar
+**Date:** 2026-04-13
+**Status:** Completed
+
+**What was implemented:**
+- Added a **6th button** (drag handle) to `ToolbarComponent` — icon `⠿`, with `data-action="drag"` and `aria-label="Drag to reposition toolbar"`.
+- Implemented drag-and-drop using the **PointerEvents API** (`pointerdown`, `pointermove`, `pointerup`):
+  - `_onDragStart()`: Captures pointer, calculates offset, adds `markup-toolbar-dragging` CSS class, switches from `right: auto` to explicit `left/top` positioning.
+  - `_onDragMove()`: Updates `left/top` based on pointer position, clamped to viewport bounds.
+  - `_onDragEnd()`: Removes dragging class, cleans up listeners, persists position via `StorageManager`.
+- Constructor now accepts `options.storageManager` for position persistence.
+- `_loadPersistedPosition()` — async method called on mount; loads `{top, left}` from storage and applies, with viewport clamping.
+- `_savePosition()` — saves `{top, left}` to `StorageManager` under key `toolbarPosition` (fire-and-forget).
+- Added CSS styles: `.markup-toolbar-btn-drag` (cursor: grab, visual separator), `.markup-toolbar-dragging` (opacity, accent border, box-shadow, cursor: grabbing).
+- Content script updated to pass `storageManager: this._storage` to `ToolbarComponent` constructor.
+- Updated Phase 6 tests: changed toolbar button count assertion from `=== 5` to `>= 5` for forward compatibility.
+
+**Technical decisions:**
+- PointerEvents API chosen over MouseEvents for better touch device compatibility and pointer capture support.
+- Pointer capture (`setPointerCapture`) ensures reliable drag tracking even when the pointer moves outside the toolbar element.
+- `_onDragEnd()` releases pointer capture on the drag button element (not `event.target`) because `event.target` may be the document when `pointerup` is dispatched at the document level.
+- Viewport clamping prevents the toolbar from being dragged off-screen.
+- Default position is `top: 16px; right: 16px` (CSS-defined). Only switches to `left/top` positioning when the user drags or a persisted position is loaded.
+
+**Current state:**
+- Toolbar has 6 buttons. Drag handle allows repositioning anywhere on screen. Position survives page refreshes via `chrome.storage`.
+
+**Issues / Deviations:**
+- Added a 6th button to the toolbar (plan said "below the Settings button" — implemented as the last button in the toolbar). Phase 6 test updated to `>= 5` assertion.
+---
+
+### [Step 8.3] — Live Settings Application
+**Date:** 2026-04-13
+**Status:** Completed
+
+**What was implemented:**
+- **Service worker (`service-worker.js`)**: Added 3 new relay handlers — `APPLY_FONT_SIZE`, `APPLY_LINE_HEIGHT`, `APPLY_FONT_FAMILY` — following the same pattern as the existing `APPLY_THEME` handler. Each queries all tabs, filters for Markdown URLs via `fileDetector.isMarkdownUrl()`, and forwards the message via `chrome.tabs.sendMessage()`.
+- **Content script (`content-script.js`)**: 
+  - Added `this._messageBus` initialization in `_initializeManagers()` via `MARKUP_MESSAGE_BUS`.
+  - Added `_wireMessageBusListeners()` method with 4 `MessageBus.listen()` handlers:
+    - `APPLY_THEME` → calls `this._themeManager.applyTheme(payload.theme)`.
+    - `APPLY_FONT_SIZE` → sets `--markup-font-size-base` CSS property on the content container.
+    - `APPLY_LINE_HEIGHT` → sets `--markup-line-height` CSS property.
+    - `APPLY_FONT_FAMILY` → sets `--markup-font-body` CSS property (or removes it when resetting to `system-ui`).
+  - Called `_wireMessageBusListeners()` in `run()` after `_wireEvents()`.
+- **No changes needed** to `popup.js` or `options.js` — they already send the correct messages via `MessageBus.send()`. The service worker relays now work correctly end-to-end.
+
+**Technical decisions:**
+- The `APPLY_FONT_FAMILY` handler has special logic for `system-ui` — it calls `removeProperty('--markup-font-body')` instead of setting the value, so the default from `variables.css` takes effect.
+- All handlers return `{ success: true }` to acknowledge receipt.
+- The `APPLY_THEME` listener also attempts to update the settings panel's radio buttons if the panel is open (via `updateThemeSelection()` if available).
+- Content script `MessageBus` instance is separate from the one used for `_trackRecentFile()` — both are lightweight and don't conflict.
+
+**Current state:**
+- Settings changes from popup/options page are reflected immediately on all open Markdown tabs without requiring a page refresh.
+- Full end-to-end flow: popup/options → `MessageBus.send()` → service worker relay → `chrome.tabs.sendMessage()` → content script `MessageBus.listen()` → apply change.
+
+**Issues / Deviations:**
+- None.
+---
+
+### [Step 8.4] — Phase 8 Tests & Documentation
+**Date:** 2026-04-13
+**Status:** Completed
+
+**What was implemented:**
+- Created `tests/phase8-browser-verify.html` with 15 test groups covering:
+  1. Theme Variables on Body — verifies CSS custom properties on `body.markup-body` for all 3 themes.
+  2. ThemeManager Body Class — verifies `applyTheme()` toggles classes on both `.markup-content` and `body`.
+  3. Toolbar Theme Awareness — verifies toolbar inherits theme variables.
+  4. Toolbar Drag Handle — verifies 6 buttons, drag handle existence, aria attributes.
+  5. Drag Interaction — simulates pointerdown/pointerup, verifies CSS classes and positioning.
+  6. Position Persistence — pre-sets position in storage, verifies it loads on mount.
+  7. StorageManager Object Values — verifies storage handles `{top, left}` objects.
+  8. Toolbar StorageManager Option — verifies constructor option.
+  9. Dragging CSS Classes — verifies computed styles.
+  10. Service Worker Static Analysis — verifies relay handlers via XHR content check.
+  11. Content Script Static Analysis — verifies MessageBus listeners via XHR content check.
+  12. UI Components CSS Theme Inheritance — verifies TOC/settings/search inherit dark vars.
+  13. Existing Toolbar Features Regression — all 5 action buttons still emit events.
+  14. Scroll Auto-Hide Regression — CSS class mechanism unchanged.
+  15. Global Exports — all classes still accessible.
+- Updated Phase 6 test: toolbar button count assertion changed from `=== 5` to `>= 5`.
+- Updated `PLAN.md`: Phase 8 marked as Done, version bumped to v0.2.0.
+- Updated `AGENTS.md` with Steps 8.1, 8.2, 8.3, 8.4 entries.
+
+**Technical decisions:**
+- Phase 6 button count assertion changed to `>= 5` rather than `=== 6` for future-proofing.
+- Static analysis tests (Groups 10-11) use XHR/fetch to load source files and check for expected string patterns — works in browser test environment.
+
+**Current state:**
+- Phase 8 is fully complete. All deliverables implemented:
+  - `src/styles/variables.css` — body-level CSS custom property definitions
+  - `src/styles/themes/light.css` — body-level light theme overrides
+  - `src/styles/themes/dark.css` — body-level dark theme overrides
+  - `src/styles/themes/sepia.css` — body-level sepia theme overrides
+  - `src/core/ThemeManager.js` — body-level theme class toggling
+  - `src/styles/ui-components.css` — theme-aware toolbar, drag handle CSS
+  - `src/ui/ToolbarComponent.js` — drag handle, position persistence
+  - `src/background/service-worker.js` — font size/height/family relay handlers
+  - `src/content/content-script.js` — live settings MessageBus listeners
+  - `tests/phase8-browser-verify.html` — Phase 8 test suite
+  - `tests/phase6-browser-verify.html` — regression fix (button count)
+  - `PLAN.md` — Phase 8 marked as Done
+  - `AGENTS.md` — Development log updated
+
+**Issues / Deviations:**
+- None.
+---

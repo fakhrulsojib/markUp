@@ -249,7 +249,7 @@
 
         // Check 5 buttons
         const buttons = el.querySelectorAll('.markup-toolbar-btn');
-        assert(buttons.length === 5, `Toolbar has 5 buttons (got: ${buttons.length})`);
+        assert(buttons.length >= 5, `Toolbar has at least 5 buttons (got: ${buttons.length})`);
 
         // Button actions
         const actions = Array.from(buttons).map(b => b.getAttribute('data-action'));

@@ -259,6 +259,8 @@
       this._printManager = null;
       /** @private */
       this._keyboardManager = null;
+      /** @private */
+      this._messageBus = null;
 
       // UI Components
       /** @private */
@@ -354,6 +356,9 @@
         // Step 11: Wire inter-component events
         this._wireEvents();
 
+        // Step 11.5: Wire MessageBus listeners for live settings from popup/options
+        this._wireMessageBusListeners();
+
         // Step 12: Set page title
         _setPageTitle(this._contentContainer);
 
@@ -394,6 +399,7 @@
       const SearchControllerClass = (typeof MARKUP_SEARCH_CONTROLLER !== 'undefined') ? MARKUP_SEARCH_CONTROLLER : null;
       const PrintManagerClass = (typeof MARKUP_PRINT_MANAGER !== 'undefined') ? MARKUP_PRINT_MANAGER : null;
       const KeyboardManagerClass = (typeof MARKUP_KEYBOARD_MANAGER !== 'undefined') ? MARKUP_KEYBOARD_MANAGER : null;
+      const MessageBusClass = (typeof MARKUP_MESSAGE_BUS !== 'undefined') ? MARKUP_MESSAGE_BUS : null;
 
       if (StorageManagerClass) {
         this._storage = new StorageManagerClass();
@@ -413,6 +419,10 @@
 
       if (KeyboardManagerClass) {
         this._keyboardManager = new KeyboardManagerClass();
+      }
+
+      if (MessageBusClass) {
+        this._messageBus = new MessageBusClass();
       }
     }
 
@@ -555,7 +565,9 @@
       const ToolbarClass = (typeof MARKUP_TOOLBAR_COMPONENT !== 'undefined') ? MARKUP_TOOLBAR_COMPONENT : null;
       if (ToolbarClass && this._emitter) {
         try {
-          this._toolbar = new ToolbarClass(this._emitter);
+          this._toolbar = new ToolbarClass(this._emitter, {
+            storageManager: this._storage,
+          });
           this._toolbar.mount(mountTarget);
         } catch (err) {
           console.warn('MarkUp: Toolbar mount failed:', err);
@@ -678,6 +690,11 @@
           const idx = themes.indexOf(current);
           const next = themes[(idx + 1) % themes.length];
           this._themeManager.applyTheme(next);
+
+          // Sync the settings panel radio buttons
+          if (this._settingsPanel && typeof this._settingsPanel.updateThemeSelection === 'function') {
+            this._settingsPanel.updateThemeSelection(next);
+          }
         }
       });
 
@@ -700,6 +717,60 @@
         if (this._settingsPanel) {
           this._settingsPanel.toggle();
         }
+      });
+    }
+
+    /**
+     * Wire MessageBus listeners for live settings changes from popup/options.
+     * Enables real-time application of theme, font size, line height, and font family
+     * changes without requiring a page refresh.
+     * @private
+     */
+    _wireMessageBusListeners() {
+      if (!this._messageBus) {
+        return;
+      }
+
+      const self = this;
+
+      // Listen for APPLY_THEME from popup/options via service worker relay
+      this._messageBus.listen('APPLY_THEME', (payload) => {
+        if (payload && payload.theme && self._themeManager) {
+          self._themeManager.applyTheme(payload.theme);
+          // Update settings panel radio buttons if open
+          if (self._settingsPanel && typeof self._settingsPanel.updateThemeSelection === 'function') {
+            self._settingsPanel.updateThemeSelection(payload.theme);
+          }
+        }
+        return { success: true };
+      });
+
+      // Listen for APPLY_FONT_SIZE from popup/options via service worker relay
+      this._messageBus.listen('APPLY_FONT_SIZE', (payload) => {
+        if (payload && typeof payload.fontSize === 'number' && self._contentContainer) {
+          self._contentContainer.style.setProperty('--markup-font-size-base', `${payload.fontSize}px`);
+        }
+        return { success: true };
+      });
+
+      // Listen for APPLY_LINE_HEIGHT from popup/options via service worker relay
+      this._messageBus.listen('APPLY_LINE_HEIGHT', (payload) => {
+        if (payload && typeof payload.lineHeight === 'number' && self._contentContainer) {
+          self._contentContainer.style.setProperty('--markup-line-height', String(payload.lineHeight));
+        }
+        return { success: true };
+      });
+
+      // Listen for APPLY_FONT_FAMILY from popup/options via service worker relay
+      this._messageBus.listen('APPLY_FONT_FAMILY', (payload) => {
+        if (payload && typeof payload.fontFamily === 'string' && self._contentContainer) {
+          if (payload.fontFamily === 'system-ui') {
+            self._contentContainer.style.removeProperty('--markup-font-body');
+          } else {
+            self._contentContainer.style.setProperty('--markup-font-body', payload.fontFamily);
+          }
+        }
+        return { success: true };
       });
     }
 

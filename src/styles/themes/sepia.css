@@ -40,3 +40,16 @@
   background: #eee4cc;
   color: #433422;
 }
+
+/* ─── Body-Level Overrides (for fixed-position UI chrome) ─────────── */
+body.markup-body.markup-theme-sepia {
+  --markup-bg-primary: #f4ecd8;
+  --markup-bg-secondary: #eee4cc;
+  --markup-text-primary: #433422;
+  --markup-text-secondary: #6b5a42;
+  --markup-text-link: #8b5e3c;
+  --markup-border: #d4c5a9;
+  --markup-accent: #b07d4f;
+  --markup-shadow-sm: 0 1px 2px rgba(67, 52, 34, 0.08);
+  --markup-shadow-md: 0 4px 12px rgba(67, 52, 34, 0.12);
+}
