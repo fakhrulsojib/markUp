@@ -1,6 +1,6 @@
 # MarkUp
 
-> 🚧 **Under Construction** — This project is actively being developed.
+> **v0.1.0** — Render Markdown files beautifully in your browser.
 
 **MarkUp** is a Chrome Extension that renders Markdown files (`.md`, `.markdown`) as beautifully styled, interactive HTML documents — directly in the browser tab.
 
@@ -17,6 +17,12 @@
 - **Settings panel** — live typography controls (font size, line height, font family)
 - **Print-optimized view** — clean print layout with UI chrome hidden
 - **Keyboard shortcuts** — full shortcut support (see table below)
+- **Extension popup** — quick theme switch, toggles, recent files list
+- **Options page** — full settings with appearance, behavior, and advanced configuration
+- **Recent files tracking** — automatically tracks last 10 opened Markdown files
+- **Raw/Rendered toggle** — switch between styled and raw Markdown view
+- **Edge case handling** — empty files, binary detection, large file warnings
+- **Accessibility** — WCAG AA compliant with aria attributes and keyboard navigation
 
 ### 🎨 Themes
 
@@ -39,16 +45,12 @@ Your theme preference is automatically saved via `chrome.storage.sync` and persi
 | `Ctrl+Shift+D` | Cycle Theme (Light → Dark → Sepia) |
 | `Ctrl+P` | Print (MarkUp formatted) |
 
-### 🔜 Coming Soon
-- Extension popup with quick settings
-- Options page for advanced configuration
-
 ## Supported Markdown Syntax
 
 Powered by [marked](https://github.com/markedjs/marked) v15.0.12 with GFM extensions:
 
 | Syntax | Support |
-|--------|---------|
+|--------|---------| 
 | Headings (h1-h6) | ✅ |
 | Bold, italic, strikethrough | ✅ |
 | Links & images | ✅ |
@@ -64,7 +66,6 @@ Powered by [marked](https://github.com/markedjs/marked) v15.0.12 with GFM extens
 
 Code blocks are highlighted via [highlight.js](https://highlightjs.org/) v11.11.1 with auto-detection.
 Supported languages include JavaScript, Python, Bash, HTML, CSS, JSON, Ruby, Java, Go, Rust, TypeScript, and many more.
-
 
 ## Supported File Types
 
@@ -85,6 +86,28 @@ MarkUp detects and renders Markdown files by URL extension and MIME type:
 - `https://raw.githubusercontent.com/*`
 
 **Dynamic injection** (via service worker): Any URL with a supported Markdown extension is detected at runtime and the content script is injected dynamically.
+
+## Architecture
+
+```
+MarkUpApp (Orchestrator)
+├── MarkdownParser (marked.js wrapper)
+├── HtmlRenderer (sanitized DOM output)
+├── SyntaxHighlighter (highlight.js wrapper)
+├── TocGenerator (heading extraction)
+├── ThemeManager (theme state + CSS vars)
+├── StorageManager (chrome.storage abstraction)
+├── SearchController (search logic)
+├── PrintManager (print layout)
+├── KeyboardManager (shortcut routing)
+├── EventEmitter (pub/sub communication)
+└── UI Components
+    ├── BaseComponent (abstract base)
+    ├── ToolbarComponent (floating toolbar)
+    ├── TocPanelComponent (sidebar TOC)
+    ├── SearchBarComponent (search overlay)
+    └── SettingsPanelComponent (settings sidebar)
+```
 
 ## Loading the Extension
 
@@ -114,6 +137,7 @@ markUp/
 │   ├── background/         # Service worker
 │   ├── content/            # Content script & styles
 │   ├── popup/              # Extension popup UI
+│   ├── options/            # Full options page
 │   ├── core/               # OOP core modules
 │   ├── ui/                 # UI component classes
 │   ├── styles/             # Theme stylesheets
@@ -123,6 +147,17 @@ markUp/
 ├── tests/                  # Test files & checklists
 └── scripts/                # Build & package scripts
 ```
+
+## Building
+
+No build step is required — MarkUp uses vanilla JavaScript.
+
+To create a distributable package:
+```bash
+bash scripts/package.sh
+```
+
+This creates `markup-extension-v0.1.0.zip` ready for installation.
 
 ## License
 

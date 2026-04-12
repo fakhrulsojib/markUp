@@ -1,6 +1,6 @@
 # PLAN.md — MarkUp: Chrome Extension Markdown Reader
 
-> **Status:** DRAFT — Awaiting Approval  
+> **Status:** v0.1.0 — Released  
 > **Version:** 0.1.0  
 > **Last Updated:** 2026-04-12  
 
@@ -816,7 +816,7 @@ classDiagram
 
 ### Phase 7: Popup, Options Page & Polish
 
-#### Step 7.1 — Build Popup UI (`popup.html`, `popup.css`, `popup.js`)
+#### Step 7.1 — Build Popup UI (`popup.html`, `popup.css`, `popup.js`) ✅ Done
 
 - Design popup layout:
   - Extension name/logo header.
@@ -831,7 +831,7 @@ classDiagram
 
 > ✅ **Verify:** Click extension icon → popup appears. Theme switch works. Settings persist across popup close/reopen.
 
-#### Step 7.2 — Build Options Page (`options.html`, `options.css`, `options.js`)
+#### Step 7.2 — Build Options Page (`options.html`, `options.css`, `options.js`) ✅ Done
 
 - Full settings page with sections:
   - **Appearance:** Theme, font size, line height, font family (mirrors SettingsPanel but on a dedicated page).
@@ -842,7 +842,7 @@ classDiagram
 
 > ✅ **Verify:** Right-click extension → Options → page opens. All settings save and load correctly. Overrides apply to content script.
 
-#### Step 7.3 — Track Recent Files in Service Worker
+#### Step 7.3 — Track Recent Files in Service Worker ✅ Done
 
 - In `service-worker.js`:
   - When a Markdown file is detected and rendered, save `{ url, title, timestamp }` to `chrome.storage.local`.
@@ -851,7 +851,7 @@ classDiagram
 
 > ✅ **Verify:** Open 3 different .md files → popup shows them in recent list. Open 12 → oldest 2 are pruned.
 
-#### Step 7.4 — UX Polish Pass
+#### Step 7.4 — UX Polish Pass ✅ Done
 
 - Add CSS transitions/animations:
   - Toolbar button hover effects.
@@ -863,7 +863,7 @@ classDiagram
 
 > ✅ **Verify:** All transitions feel smooth and professional. Large file shows loading indicator before content appears.
 
-#### Step 7.5 — Accessibility Audit
+#### Step 7.5 — Accessibility Audit ✅ Done
 
 - Add `aria-*` attributes to all interactive components:
   - `aria-label` on toolbar buttons.
@@ -875,7 +875,7 @@ classDiagram
 
 > ✅ **Verify:** Navigate entire UI with keyboard only. Run Chrome DevTools Lighthouse accessibility audit → score ≥ 90.
 
-#### Step 7.6 — Error States & Edge Cases
+#### Step 7.6 — Error States & Edge Cases ✅ Done
 
 - Handle edge cases:
   - Empty `.md` file → show "This file is empty" message.
@@ -886,7 +886,7 @@ classDiagram
 
 > ✅ **Verify:** Test each edge case manually with test files in `tests/test-files/`.
 
-#### Step 7.7 — Create Test Files
+#### Step 7.7 — Create Test Files ✅ Done
 
 - Create comprehensive test Markdown files in `tests/test-files/`:
   - `basic.md` — Headings, paragraphs, bold, italic, links, images.
@@ -898,7 +898,7 @@ classDiagram
 
 > ✅ **Verify:** Each test file opens and renders correctly. Edge cases file doesn't break the renderer. XSS payloads are sanitized.
 
-#### Step 7.8 — Final Documentation Update
+#### Step 7.8 — Final Documentation Update ✅ Done
 
 - **`README.md`** — Complete with:
   - Project description and screenshots.
@@ -914,7 +914,7 @@ classDiagram
 
 > ✅ **Verify:** A new developer can read README.md and set up the extension. All three files are complete and consistent.
 
-#### Step 7.9 — Build & Package Script
+#### Step 7.9 — Build & Package Script ✅ Done
 
 - Create `scripts/package.sh`:
   - Copies `src/`, `assets/`, and `vendor/` to a `dist/` directory.
@@ -991,4 +991,4 @@ classDiagram
 
 ---
 
-> **End of PLAN.md — Awaiting User Approval**
+> **End of PLAN.md — v0.1.0 Released**
