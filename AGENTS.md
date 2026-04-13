@@ -16,7 +16,7 @@
 | 6 | ✅ Done | 2026-04-12 | UI components: toolbar, TOC, search, settings, keyboard, print |
 | 7 | ✅ Done | 2026-04-12 | Popup, options page, recent files, UX polish, a11y, packaging |
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
-| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.3 done) |
+| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.4 done) |
 
 ---
 
@@ -276,8 +276,6 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 - Banners prepend to body (don't clear raw content).
 - `autoDetect` gate wraps dynamic injection in async IIFE (tabs.onUpdated doesn't support async callbacks).
 
-### Remaining Steps
-- **9.4:** Custom file extensions → `FileDetector.setCustomExtensions()`
 - **9.5:** `cspStrict` → restrictive Sanitizer config
 - **9.6:** Tests & documentation
 
@@ -334,6 +332,27 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 
 ---
 
+### Step 9.4 — Custom File Extensions (`extensions`) ✅
+
+> Wired the Options page "File Extensions" setting into `FileDetector` via a new `setCustomExtensions()` method. Custom extensions are merged with (never replace) built-in defaults. Options UI split into readonly defaults + editable custom input with Chrome limitation tooltip.
+
+**Files Modified:**
+- `src/utils/constants.js` — Added `DEFAULTS.EXTENSIONS: '.md, .markdown, .mdown, .mkd, .mdx'`.
+- `src/core/FileDetector.js` — Added `_builtInPatterns` (frozen at construction) + `setCustomExtensions(extensionsString)` method. Parses comma-separated string, escapes regex special chars, deduplicates against built-in, merges.
+- `src/background/service-worker.js` — Added startup async IIFE to load custom extensions from `settingsStorage` into `fileDetector`. Added `APPLY_EXTENSIONS` relay handler (broadcasts to ALL tabs, not filtered — new extensions may match previously-unmatched tabs).
+- `src/options/options.html` — Split extensions UI: readonly `#markup-opt-extensions-builtin` field (`.md, .markdown, .mdown, .mkd, .mdx`) + editable `#markup-opt-extensions` input for custom extensions + `<p class="markup-options-help">` tooltip explaining Chrome static match limitation.
+- `src/options/options.js` — Added `APPLY_EXTENSIONS` notification in `_wireBehaviorControls()`. Reset now clears custom extensions to empty string (built-in always preserved).
+- `src/options/options.css` — Added `.markup-options-readonly` (dimmed, cursor not-allowed) and `.markup-options-help` + `.markup-options-help code` styles.
+
+**Key Decisions:**
+- **Merge, never replace** — `_builtInPatterns` stored separately at construction. `setCustomExtensions('')` resets to built-in only. User cannot break core `.md` detection.
+- **APPLY_EXTENSIONS relay broadcasts to all tabs** (not filtered by `isMarkdownUrl()`) — a `.txt` tab wouldn't match old patterns but needs to be reachable after patterns expand.
+- **Options UI split per user feedback** — built-in extensions shown in readonly field; custom extensions in separate editable field. Prevents accidental removal of defaults.
+- **Regex injection prevented** — special characters escaped via `ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
+- **Service worker restart safety** — startup IIFE re-reads `extensions` from storage.
+
+---
+
 ## Test Suite Summary
 
 | Suite | File | Tests |
@@ -348,6 +367,7 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 131 tests |
 | Phase 9.2 | `tests/phase9-step92-browser-verify.html` | 58 tests |
 | Phase 9.3 | `tests/phase9-step93-browser-verify.html` | 54 tests |
+| Phase 9.4 | `tests/phase9-step94-browser-verify.html` | 42 tests |
 
 ---
 
@@ -364,6 +384,7 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | Toolbar has 6 buttons (plan said 5) | Drag handle added in Phase 8 |
 | `autoDetect` + `autoRender` merged into `enabled` | Phase 9.3: eliminated dead combos and semantic overlap |
 | `enableFileUrl` toggle removed entirely | Global `enabled` toggle is sufficient; no separate file:// gate needed |
+| Extensions UI split into readonly + editable fields | User feedback: prevent accidental removal of built-in defaults |
 
 ---
 

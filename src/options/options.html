@@ -68,10 +68,21 @@
       </div>
 
       <div class="markup-options-field">
-        <label for="markup-opt-extensions">File Extensions (comma-separated)</label>
+        <label>Built-in Extensions</label>
+        <input type="text" id="markup-opt-extensions-builtin" class="markup-options-input markup-options-readonly"
+               value=".md, .markdown, .mdown, .mkd, .mdx" readonly
+               title="These default extensions are always active and cannot be removed.">
+      </div>
+
+      <div class="markup-options-field">
+        <label for="markup-opt-extensions">Additional Extensions (comma-separated)</label>
         <input type="text" id="markup-opt-extensions" class="markup-options-input"
-               value=".md, .markdown, .mdown, .mkd, .mdx"
-               placeholder=".md, .markdown, .mdown">
+               value="" placeholder="e.g. .txt, .rst, .adoc, .wiki">
+        <p class="markup-options-help">
+          💡 Custom extensions affect <strong>dynamic detection only</strong> (http/https URLs).
+          Built-in extensions (<code>.md</code>, <code>.markdown</code>) are handled by Chrome's
+          static matching and always work on <code>file://</code> URLs.
+        </p>
       </div>
     </section>
 

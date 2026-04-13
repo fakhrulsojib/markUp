@@ -37,6 +37,14 @@ class FileDetector {
         ];
 
     /**
+     * Frozen copy of the built-in patterns.
+     * Used by setCustomExtensions() to always merge (never replace) defaults.
+     * @type {RegExp[]}
+     * @private
+     */
+    this._builtInPatterns = [...this._patterns];
+
+    /**
      * MIME types considered to be Markdown content.
      * @type {string[]}
      * @private
@@ -44,6 +52,46 @@ class FileDetector {
     this._mimeTypes = constants
       ? constants.MD_MIME_TYPES
       : ['text/markdown', 'text/x-markdown'];
+  }
+
+  /**
+   * Set custom file extensions for Markdown detection.
+   * Parses a comma-separated string of extensions, builds RegExp patterns,
+   * and MERGES them with (not replaces) the built-in patterns.
+   *
+   * If the input is empty or invalid, patterns reset to built-in only.
+   *
+   * @param {string} extensionsString - Comma-separated extensions (e.g., ".txt, .rst, .adoc").
+   */
+  setCustomExtensions(extensionsString) {
+    // Reset to built-in if input is empty/invalid
+    if (!extensionsString || typeof extensionsString !== 'string' || !extensionsString.trim()) {
+      this._patterns = [...this._builtInPatterns];
+      return;
+    }
+
+    // Parse: split by comma, trim, lowercase, ensure dot prefix
+    const parsed = extensionsString
+      .split(',')
+      .map(ext => ext.trim().toLowerCase())
+      .filter(ext => ext.length > 0)
+      .map(ext => ext.startsWith('.') ? ext : '.' + ext);
+
+    // Deduplicate against built-in patterns
+    const uniqueCustom = parsed.filter(ext => {
+      // Test if any built-in pattern already matches a synthetic filename with this extension
+      const testPath = 'testfile' + ext;
+      return !this._builtInPatterns.some(p => p.test(testPath));
+    });
+
+    // Build RegExp patterns from custom extensions (escape special regex characters)
+    const customPatterns = uniqueCustom.map(ext => {
+      const escaped = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(escaped + '$', 'i');
+    });
+
+    // Merge: built-in first, then custom
+    this._patterns = [...this._builtInPatterns, ...customPatterns];
   }
 
   /**

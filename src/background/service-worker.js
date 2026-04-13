@@ -29,6 +29,22 @@ importScripts(
 const fileDetector = new MARKUP_FILE_DETECTOR();
 
 /**
+ * Load custom file extensions from storage on startup.
+ * Must be async — wrapping in IIFE since top-level await isn't available.
+ */
+(async () => {
+  try {
+    const extensions = await settingsStorage.get('extensions');
+    if (extensions && typeof extensions === 'string') {
+      fileDetector.setCustomExtensions(extensions);
+      MARKUP_LOGGER.debug('ServiceWorker', 'Custom extensions loaded:', extensions);
+    }
+  } catch (err) {
+    console.warn('MarkUp: Failed to load custom extensions:', err);
+  }
+})();
+
+/**
  * MessageBus instance for cross-context messaging.
  * @type {MessageBus}
  */
@@ -335,6 +351,30 @@ messageBus.listen('APPLY_DEBUG_LOG', async (payload, sender) => {
     }
   } catch (err) {
     // Silent — don't log relay attempts for the logger itself
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_EXTENSIONS' action — update FileDetector patterns and relay to tabs.
+ * Broadcasts to ALL tabs (not filtered) since new extensions may match previously-unmatched tabs.
+ */
+messageBus.listen('APPLY_EXTENSIONS', async (payload, sender) => {
+  // Update service worker's own FileDetector patterns
+  if (payload && typeof payload.extensions === 'string') {
+    fileDetector.setCustomExtensions(payload.extensions);
+    MARKUP_LOGGER.debug('ServiceWorker', 'Custom extensions updated:', payload.extensions);
+  }
+  // Relay to all open tabs (future-proofing for content script awareness)
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_EXTENSIONS', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    MARKUP_LOGGER.debug('ServiceWorker', 'Extensions relay attempted.');
   }
   return { success: true };
 });

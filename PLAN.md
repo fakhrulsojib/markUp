@@ -1083,21 +1083,24 @@ classDiagram
 - [x] Both UIs stay in sync — changing a toggle in popup reflects in options and vice versa.
 - [x] Document the final consolidated settings model clearly.
 
-#### Step 9.4 — Wire `extensions` (Custom File Extensions)
+#### Step 9.4 — Wire `extensions` (Custom File Extensions) ✅
 
-- In `service-worker.js`:
-  - On startup and on `APPLY_EXTENSIONS` message, read the `extensions` string from `StorageManager`.
-  - Parse it into an array of extensions (split by `,`, trim, normalize to lowercase, ensure each starts with `.`).
-  - Build dynamic RegExp patterns from the custom extensions list.
-  - Update `FileDetector` to accept custom patterns via a `setPatterns(patterns)` method or a new constructor option.
-  - Use the updated patterns in the `chrome.tabs.onUpdated` dynamic injection handler.
-- In `FileDetector.js`:
-  - Add `setCustomExtensions(extensions)` method that rebuilds `_patterns` from the provided extension list.
-  - Merge with (not replace) the built-in patterns from `constants.js`.
-- Add `APPLY_EXTENSIONS` relay in `service-worker.js` — when the user changes extensions in the Options page, the service worker reloads patterns immediately.
-- **Note:** Static `content_scripts.matches` in `manifest.json` cannot be changed at runtime. Custom extensions only affect dynamic injection. This is an inherent Chrome limitation — document it in the Options page UI with a help tooltip.
+- [x] In `service-worker.js`:
+  - [x] On startup and on `APPLY_EXTENSIONS` message, read the `extensions` string from `StorageManager`.
+  - [x] Parse it into an array of extensions (split by `,`, trim, normalize to lowercase, ensure each starts with `.`).
+  - [x] Build dynamic RegExp patterns from the custom extensions list.
+  - [x] Update `FileDetector` to accept custom patterns via a `setCustomExtensions(extensionsString)` method.
+  - [x] Use the updated patterns in the `chrome.tabs.onUpdated` dynamic injection handler.
+- [x] In `FileDetector.js`:
+  - [x] Add `setCustomExtensions(extensions)` method that rebuilds `_patterns` from the provided extension list.
+  - [x] Merge with (not replace) the built-in patterns from `constants.js`.
+- [x] Add `APPLY_EXTENSIONS` relay in `service-worker.js` — when the user changes extensions in the Options page, the service worker reloads patterns immediately.
+- [x] **Note:** Static `content_scripts.matches` in `manifest.json` cannot be changed at runtime. Custom extensions only affect dynamic injection. This is an inherent Chrome limitation — documented in the Options page UI with a help tooltip.
+- [x] Options UI split: readonly built-in defaults field + editable custom extensions input (per user feedback).
+- [x] Added `DEFAULTS.EXTENSIONS` constant and CSS styles for readonly/help elements.
+- [x] Test suite: `tests/phase9-step94-browser-verify.html` — 42 tests, all passing.
 
-> ✅ **Verify:** Add `.txt` to the extensions list in Options → open a `notes.txt` file → MarkUp renders it. Remove `.txt` → open another `.txt` file → raw text (no rendering). Default extensions (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`) always work.
+> ✅ **Verified:** Add `.txt` to the extensions list in Options → open a `notes.txt` file → MarkUp renders it. Remove `.txt` → open another `.txt` file → raw text (no rendering). Default extensions (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`) always work. All prior test suites (Phase 2–9.3) pass with zero regressions.
 
 #### Step 9.5 — Wire `cspStrict` Toggle
 

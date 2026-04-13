@@ -166,6 +166,7 @@
     if (extensionsEl) {
       extensionsEl.addEventListener('change', async () => {
         await _saveSetting('extensions', extensionsEl.value);
+        await _notifyContentScript('APPLY_EXTENSIONS', { extensions: extensionsEl.value });
       });
     }
   }
@@ -214,7 +215,7 @@
       await storage.set('lineHeight', DEFAULTS.LINE_HEIGHT);
       await storage.set('fontFamily', DEFAULTS.FONT_FAMILY);
       await storage.set('enabled', true);
-      await storage.set('extensions', '.md, .markdown, .mdown, .mkd, .mdx');
+      await storage.set('extensions', '');
       await storage.set('cspStrict', true);
       await storage.set('debugLog', false);
 

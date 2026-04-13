@@ -213,6 +213,32 @@ body {
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
 }
 
+.markup-options-input.markup-options-readonly {
+  background: #eaeef2;
+  color: #656d76;
+  cursor: not-allowed;
+  border-color: #d0d7de;
+}
+
+.markup-options-input.markup-options-readonly:hover {
+  border-color: #d0d7de;
+}
+
+.markup-options-help {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #656d76;
+  line-height: 1.5;
+}
+
+.markup-options-help code {
+  font-size: 11px;
+  padding: 1px 5px;
+  background: #eaeef2;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
 /* --- Toggle Switches --- */
 
 .markup-options-toggle-field {
