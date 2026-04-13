@@ -11,7 +11,7 @@
 set -e
 
 # Configuration
-VERSION="0.1.0"
+VERSION="0.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SRC_DIR="$PROJECT_DIR/src"
