@@ -105,18 +105,18 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     return;
   }
 
-  // Gate: autoDetect — if disabled, skip dynamic injection (Step 9.1)
+  // Gate: enabled — if disabled, skip dynamic injection (Step 9.3)
   // Uses a Promise-based check; wrapping in an async IIFE
   (async () => {
     try {
-      const autoDetect = await settingsStorage.get('autoDetect');
-      if (autoDetect === false) {
-        MARKUP_LOGGER.debug('ServiceWorker', 'Auto-detect disabled. Skipping dynamic injection for:', tab.url);
+      const enabled = await settingsStorage.get('enabled');
+      if (enabled === false) {
+        MARKUP_LOGGER.debug('ServiceWorker', 'MarkUp is disabled. Skipping dynamic injection for:', tab.url);
         return;
       }
     } catch (err) {
       // On error, default to injecting (fail-open)
-      console.warn('MarkUp: Failed to check autoDetect setting:', err);
+      console.warn('MarkUp: Failed to check enabled setting:', err);
     }
 
     // Dynamically inject the content script
@@ -303,35 +303,18 @@ messageBus.listen('APPLY_FONT_FAMILY', async (payload, sender) => {
 });
 
 /**
- * Handle 'APPLY_AUTO_RENDER' action — relay to active Markdown tabs.
+ * Handle 'APPLY_ENABLED' action — relay to active Markdown tabs.
  */
-messageBus.listen('APPLY_AUTO_RENDER', async (payload, sender) => {
+messageBus.listen('APPLY_ENABLED', async (payload, sender) => {
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
-        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_AUTO_RENDER', payload: payload }).catch(() => {});
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_ENABLED', payload: payload }).catch(() => {});
       }
     }
   } catch (err) {
-    MARKUP_LOGGER.debug('ServiceWorker', 'Auto-render relay attempted.');
-  }
-  return { success: true };
-});
-
-/**
- * Handle 'APPLY_ENABLE_FILE_URL' action — relay to active file:// Markdown tabs.
- */
-messageBus.listen('APPLY_ENABLE_FILE_URL', async (payload, sender) => {
-  try {
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (tab.id && (tab.url || '').startsWith('file://') && fileDetector.isMarkdownUrl(tab.url || '')) {
-        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_ENABLE_FILE_URL', payload: payload }).catch(() => {});
-      }
-    }
-  } catch (err) {
-    MARKUP_LOGGER.debug('ServiceWorker', 'Enable file URL relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Enabled relay attempted.');
   }
   return { success: true };
 });

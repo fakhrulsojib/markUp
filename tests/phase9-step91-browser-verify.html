@@ -165,9 +165,12 @@
 
       (function() {
         const DEFAULTS = MARKUP_CONSTANTS.DEFAULTS;
-        assert(DEFAULTS.AUTORENDER === true, 'DEFAULTS.AUTORENDER is true');
-        assert(DEFAULTS.AUTODETECT === true, 'DEFAULTS.AUTODETECT is true');
-        assert(DEFAULTS.ENABLEFILEURL === true, 'DEFAULTS.ENABLEFILEURL is true');
+        assert(DEFAULTS.ENABLED === true, 'DEFAULTS.ENABLED is true');
+
+        // Verify old keys are removed
+        assert(DEFAULTS.AUTORENDER === undefined, 'DEFAULTS.AUTORENDER is removed (Phase 9.3)');
+        assert(DEFAULTS.AUTODETECT === undefined, 'DEFAULTS.AUTODETECT is removed (Phase 9.3)');
+        assert(DEFAULTS.ENABLEFILEURL === undefined, 'DEFAULTS.ENABLEFILEURL is removed (enableFileUrl eliminated)');
 
         // Verify existing defaults are preserved
         assert(DEFAULTS.THEME === 'light', 'DEFAULTS.THEME is still "light"');
@@ -178,166 +181,151 @@
         assert(DEFAULTS.TOOLBAR_POSITION === 'top-right', 'DEFAULTS.TOOLBAR_POSITION is still "top-right"');
       })();
 
-      // ===== Test Group 2: StorageManager — autoRender default =====
-      groupHeader('2. StorageManager — autoRender Default');
+      // ===== Test Group 2: StorageManager — enabled default (replaces autoRender) =====
+      groupHeader('2. StorageManager — enabled Default');
 
       (async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
-        // When not set, autoRender should return undefined (no DEFAULTS match for 'autoRender')
-        // because DEFAULTS uses AUTORENDER (uppercase). The content script uses !== false check.
-        const val = await storage.get('autoRender');
+        // When not set, enabled should return true (from DEFAULTS.ENABLED)
+        const val = await storage.get('enabled');
         assert(val === undefined || val === true,
-          `autoRender returns ${val} when not set (undefined or true — both allow pipeline to run)`);
+          `enabled returns ${val} when not set (undefined or true — both allow pipeline to run)`);
 
         // When explicitly set to false
-        await storage.set('autoRender', false);
-        const valFalse = await storage.get('autoRender');
-        assert(valFalse === false, `autoRender returns false when set to false (got: ${valFalse})`);
+        await storage.set('enabled', false);
+        const valFalse = await storage.get('enabled');
+        assert(valFalse === false, `enabled returns false when set to false (got: ${valFalse})`);
 
         // When explicitly set to true
-        await storage.set('autoRender', true);
-        const valTrue = await storage.get('autoRender');
-        assert(valTrue === true, `autoRender returns true when set to true (got: ${valTrue})`);
+        await storage.set('enabled', true);
+        const valTrue = await storage.get('enabled');
+        assert(valTrue === true, `enabled returns true when set to true (got: ${valTrue})`);
 
         resetStorage();
       })();
 
-      // ===== Test Group 3: StorageManager — enableFileUrl default =====
-      groupHeader('3. StorageManager — enableFileUrl Default');
+      // ===== Test Group 3: enableFileUrl removed =====
+      groupHeader('3. Verify enableFileUrl is Removed');
 
       (async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
-        const val = await storage.get('enableFileUrl');
-        assert(val === undefined || val === true,
-          `enableFileUrl returns ${val} when not set (undefined or true — both allow pipeline)`);
-
-        await storage.set('enableFileUrl', false);
-        const valFalse = await storage.get('enableFileUrl');
-        assert(valFalse === false, `enableFileUrl returns false when set to false (got: ${valFalse})`);
+        // enableFileUrl should not be in DEFAULTS anymore
+        const DEFAULTS = MARKUP_CONSTANTS.DEFAULTS;
+        assert(DEFAULTS.ENABLEFILEURL === undefined,
+          'DEFAULTS.ENABLEFILEURL is undefined (removed)');
 
         resetStorage();
       })();
 
-      // ===== Test Group 4: StorageManager — autoDetect default =====
-      groupHeader('4. StorageManager — autoDetect Default');
+      // ===== Test Group 4: (Legacy autoDetect removed — replaced by 'enabled' in Phase 9.3) =====
+      groupHeader('4. StorageManager — enabled replaces autoDetect (Phase 9.3)');
 
       (async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
-        const val = await storage.get('autoDetect');
-        assert(val === undefined || val === true,
-          `autoDetect returns ${val} when not set (undefined or true — both allow injection)`);
-
-        await storage.set('autoDetect', false);
-        const valFalse = await storage.get('autoDetect');
-        assert(valFalse === false, `autoDetect returns false when set to false (got: ${valFalse})`);
+        // Verify 'enabled' key works as replacement for both autoDetect and autoRender
+        await storage.set('enabled', false);
+        const val = await storage.get('enabled');
+        assert(val === false, `enabled returns false when set (replaces autoDetect)`);
 
         resetStorage();
       })();
 
-      // ===== Test Group 5: Content Script Static Analysis — autoRender gate =====
-      groupHeader('5. Content Script — autoRender Gate (Static Analysis)');
+      // ===== Test Group 5: Content Script Static Analysis — enabled gate (was autoRender) =====
+      groupHeader('5. Content Script — enabled Gate (Static Analysis)');
 
       (async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
 
-          assert(content.includes("storage.get('autoRender')") || content.includes("earlyStorage.get('autoRender')"),
-            'content-script.js reads autoRender from storage');
-          assert(content.includes('autoRender === false'),
-            'content-script.js checks autoRender === false');
+          assert(content.includes("earlyStorage.get('enabled')"),
+            'content-script.js reads enabled from storage');
+          assert(content.includes('enabled === false'),
+            'content-script.js checks enabled === false');
           assert(content.includes('_showDisabledBanner'),
             'content-script.js has _showDisabledBanner method');
-          assert(content.includes('auto-rendering is disabled'),
-            'Banner text includes "auto-rendering is disabled"');
+          assert(content.includes('MarkUp is disabled'),
+            'Banner text includes "MarkUp is disabled"');
 
           // Verify gate is after detection/extraction but before parsing
-          const gateIndex = content.indexOf('autoRender === false');
+          const gateIndex = content.indexOf('enabled === false');
           const parseIndex = content.indexOf('_parseAndRender');
           const detectIndex = content.indexOf('_isRawMarkdownPage');
           assert(gateIndex > detectIndex,
-            'autoRender gate is after detection');
+            'enabled gate is after detection');
           assert(gateIndex < parseIndex,
-            'autoRender gate is before parsing');
+            'enabled gate is before parsing');
 
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
       })();
 
-      // ===== Test Group 6: Content Script Static Analysis — enableFileUrl gate =====
-      groupHeader('6. Content Script — enableFileUrl Gate (Static Analysis)');
+      // ===== Test Group 6: enableFileUrl gate removed =====
+      groupHeader('6. Content Script — enableFileUrl Gate Removed');
 
       (async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
 
-          assert(content.includes("earlyStorage.get('enableFileUrl')"),
-            'content-script.js reads enableFileUrl from storage');
-          assert(content.includes('enableFileUrl === false'),
-            'content-script.js checks enableFileUrl === false');
-          assert(content.includes("window.location.protocol === 'file:'"),
-            'enableFileUrl gate checks for file:// protocol');
-          assert(content.includes('_showFileUrlDisabledBanner'),
-            'content-script.js has _showFileUrlDisabledBanner method');
-          assert(content.includes('disabled for local files'),
-            'Banner text includes "disabled for local files"');
+          assert(!content.includes("earlyStorage.get('enableFileUrl')"),
+            'content-script.js no longer reads enableFileUrl from storage');
+          assert(!content.includes('_showFileUrlDisabledBanner'),
+            'content-script.js no longer has _showFileUrlDisabledBanner method');
 
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
       })();
 
-      // ===== Test Group 7: Content Script — APPLY_AUTO_RENDER listener =====
-      groupHeader('7. Content Script — APPLY_AUTO_RENDER Listener (Static Analysis)');
+      // ===== Test Group 7: Content Script — APPLY_ENABLED listener (was APPLY_AUTO_RENDER) =====
+      groupHeader('7. Content Script — APPLY_ENABLED Listener (Static Analysis)');
 
       (async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
 
-          assert(content.includes("listen('APPLY_AUTO_RENDER'"),
-            'content-script.js has APPLY_AUTO_RENDER MessageBus listener');
-          assert(content.includes("listen('APPLY_ENABLE_FILE_URL'"),
-            'content-script.js has APPLY_ENABLE_FILE_URL MessageBus listener');
+          assert(content.includes("listen('APPLY_ENABLED'"),
+            'content-script.js has APPLY_ENABLED MessageBus listener');
 
-          // Both handlers should trigger reload
-          const autoRenderListenerIdx = content.indexOf("listen('APPLY_AUTO_RENDER'");
-          const enableFileUrlListenerIdx = content.indexOf("listen('APPLY_ENABLE_FILE_URL'");
-          const afterAutoRender = content.substring(autoRenderListenerIdx, autoRenderListenerIdx + 400);
-          const afterEnableFileUrl = content.substring(enableFileUrlListenerIdx, enableFileUrlListenerIdx + 300);
+          // APPLY_ENABLE_FILE_URL should no longer exist
+          assert(!content.includes("listen('APPLY_ENABLE_FILE_URL'"),
+            'content-script.js no longer has APPLY_ENABLE_FILE_URL listener');
 
-          assert(afterAutoRender.includes('window.location.reload()'),
-            'APPLY_AUTO_RENDER handler calls window.location.reload()');
-          assert(afterEnableFileUrl.includes('window.location.reload()'),
-            'APPLY_ENABLE_FILE_URL handler calls window.location.reload()');
+          // APPLY_ENABLED handler should trigger reload
+          const enabledListenerIdx = content.indexOf("listen('APPLY_ENABLED'");
+          const afterEnabled = content.substring(enabledListenerIdx, enabledListenerIdx + 400);
+
+          assert(afterEnabled.includes('window.location.reload()'),
+            'APPLY_ENABLED handler calls window.location.reload()');
 
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
       })();
 
-      // ===== Test Group 8: Service Worker Static Analysis — autoDetect gate =====
-      groupHeader('8. Service Worker — autoDetect Gate (Static Analysis)');
+      // ===== Test Group 8: Service Worker Static Analysis — enabled gate (was autoDetect) =====
+      groupHeader('8. Service Worker — enabled Gate (Static Analysis)');
 
       (async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
 
-          assert(content.includes("settingsStorage.get('autoDetect')") || content.includes("get('autoDetect')"),
-            'service-worker.js reads autoDetect from storage');
-          assert(content.includes('autoDetect === false'),
-            'service-worker.js checks autoDetect === false');
-          assert(content.includes('Auto-detect disabled'),
-            'service-worker.js logs when auto-detect is disabled');
+          assert(content.includes("settingsStorage.get('enabled')") || content.includes("get('enabled')"),
+            'service-worker.js reads enabled from storage');
+          assert(content.includes('enabled === false'),
+            'service-worker.js checks enabled === false');
+          assert(content.includes('MarkUp is disabled'),
+            'service-worker.js logs when MarkUp is disabled');
 
           // Verify settingsStorage is created
           assert(content.includes('settingsStorage'),
@@ -348,33 +336,26 @@
         }
       })();
 
-      // ===== Test Group 9: Service Worker — New Relay Handlers =====
-      groupHeader('9. Service Worker — APPLY_AUTO_RENDER & APPLY_ENABLE_FILE_URL Relays');
+      // ===== Test Group 9: Service Worker — APPLY_ENABLED Relay =====
+      groupHeader('9. Service Worker — APPLY_ENABLED Relay');
 
       (async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
 
-          assert(content.includes("listen('APPLY_AUTO_RENDER'"),
-            'service-worker.js has APPLY_AUTO_RENDER listener');
-          assert(content.includes("listen('APPLY_ENABLE_FILE_URL'"),
-            'service-worker.js has APPLY_ENABLE_FILE_URL listener');
+          assert(content.includes("listen('APPLY_ENABLED'"),
+            'service-worker.js has APPLY_ENABLED listener');
+
+          // APPLY_ENABLE_FILE_URL should no longer exist
+          assert(!content.includes("listen('APPLY_ENABLE_FILE_URL'"),
+            'service-worker.js no longer has APPLY_ENABLE_FILE_URL listener');
 
           // Verify relay pattern (tabs.sendMessage)
-          const autoRenderIdx = content.indexOf("listen('APPLY_AUTO_RENDER'");
-          const afterAutoRender = content.substring(autoRenderIdx, autoRenderIdx + 500);
-          assert(afterAutoRender.includes('chrome.tabs.sendMessage'),
-            'APPLY_AUTO_RENDER relays via chrome.tabs.sendMessage');
-
-          const enableFileUrlIdx = content.indexOf("listen('APPLY_ENABLE_FILE_URL'");
-          const afterEnableFileUrl = content.substring(enableFileUrlIdx, enableFileUrlIdx + 500);
-          assert(afterEnableFileUrl.includes('chrome.tabs.sendMessage'),
-            'APPLY_ENABLE_FILE_URL relays via chrome.tabs.sendMessage');
-
-          // APPLY_ENABLE_FILE_URL should only relay to file:// tabs
-          assert(afterEnableFileUrl.includes("startsWith('file://')"),
-            'APPLY_ENABLE_FILE_URL relay only targets file:// tabs');
+          const enabledIdx = content.indexOf("listen('APPLY_ENABLED'");
+          const afterEnabled = content.substring(enabledIdx, enabledIdx + 500);
+          assert(afterEnabled.includes('chrome.tabs.sendMessage'),
+            'APPLY_ENABLED relays via chrome.tabs.sendMessage');
 
           // Existing relays are still present
           assert(content.includes("listen('APPLY_THEME'"),
@@ -391,31 +372,31 @@
         }
       })();
 
-      // ===== Test Group 10: Options.js — APPLY_AUTO_RENDER notification =====
-      groupHeader('10. Options.js — APPLY_AUTO_RENDER Notification');
+      // ===== Test Group 10: Options.js — APPLY_ENABLED notification (was APPLY_AUTO_RENDER) =====
+      groupHeader('10. Options.js — APPLY_ENABLED Notification');
 
       (async function() {
         try {
           const response = await fetch('../src/options/options.js');
           const content = await response.text();
 
-          assert(content.includes("APPLY_AUTO_RENDER"),
-            'options.js sends APPLY_AUTO_RENDER notification');
-          assert(content.includes("_notifyContentScript('APPLY_AUTO_RENDER'"),
-            'options.js calls _notifyContentScript with APPLY_AUTO_RENDER');
-          assert(content.includes("autoRender: checked"),
-            'options.js includes autoRender value in notification payload');
+          assert(content.includes("APPLY_ENABLED"),
+            'options.js sends APPLY_ENABLED notification');
+          assert(content.includes("_notifyContentScript('APPLY_ENABLED'"),
+            'options.js calls _notifyContentScript with APPLY_ENABLED');
+          assert(content.includes("enabled: checked"),
+            'options.js includes enabled value in notification payload');
 
           // Still saves to storage
-          assert(content.includes("_saveSetting('autoRender', checked)"),
-            'options.js still saves autoRender to storage');
+          assert(content.includes("_saveSetting('enabled', checked)"),
+            'options.js saves enabled to storage');
 
         } catch (err) {
           log('warn', `Could not fetch options.js: ${err.message}`);
         }
       })();
 
-      // ===== Test Group 11: Popup.js — APPLY_ENABLE_FILE_URL & APPLY_AUTO_DETECT notifications =====
+      // ===== Test Group 11: Popup.js — APPLY_ENABLED notification =====
       groupHeader('11. Popup.js — Toggle Notifications');
 
       (async function() {
@@ -423,23 +404,21 @@
           const response = await fetch('../src/popup/popup.js');
           const content = await response.text();
 
-          // enableFileUrl notification
-          assert(content.includes("APPLY_ENABLE_FILE_URL"),
-            'popup.js sends APPLY_ENABLE_FILE_URL notification');
-          assert(content.includes("enableFileUrl: enabled"),
-            'popup.js includes enableFileUrl value in payload');
+          // enableFileUrl should no longer exist
+          assert(!content.includes("APPLY_ENABLE_FILE_URL"),
+            'popup.js no longer sends APPLY_ENABLE_FILE_URL notification');
+          assert(!content.includes("enableFileUrl"),
+            'popup.js no longer references enableFileUrl');
 
-          // autoDetect notification
-          assert(content.includes("APPLY_AUTO_DETECT"),
-            'popup.js sends APPLY_AUTO_DETECT notification');
-          assert(content.includes("autoDetect: enabled"),
-            'popup.js includes autoDetect value in payload');
+          // enabled notification
+          assert(content.includes("APPLY_ENABLED"),
+            'popup.js sends APPLY_ENABLED notification');
+          assert(content.includes("enabled: isEnabled"),
+            'popup.js includes enabled value in payload');
 
           // Still saves to storage
-          assert(content.includes("storage.set('enableFileUrl', enabled)"),
-            'popup.js still saves enableFileUrl to storage');
-          assert(content.includes("storage.set('autoDetect', enabled)"),
-            'popup.js still saves autoDetect to storage');
+          assert(content.includes("storage.set('enabled', isEnabled)"),
+            'popup.js saves enabled to storage');
 
         } catch (err) {
           log('warn', `Could not fetch popup.js: ${err.message}`);
@@ -457,18 +436,16 @@
           // Verify banner has Enable button
           assert(content.includes("enableBtn.textContent = 'Enable'"),
             '_showDisabledBanner has Enable button');
-          assert(content.includes("Enable MarkUp auto-rendering"),
+          assert(content.includes("Enable MarkUp"),
             '_showDisabledBanner Enable button has aria-label');
-          assert(content.includes("sm.set('autoRender', true)"),
-            'Enable button sets autoRender to true in storage');
+          assert(content.includes("sm.set('enabled', true)"),
+            'Enable button sets enabled to true in storage');
 
-          // Verify file URL banner
-          assert(content.includes("enableBtn.textContent = 'Enable'"),
-            '_showFileUrlDisabledBanner has Enable button');
-          assert(content.includes("Enable MarkUp for local files"),
-            '_showFileUrlDisabledBanner Enable button has aria-label');
-          assert(content.includes("sm.set('enableFileUrl', true)"),
-            'Enable button sets enableFileUrl to true in storage');
+          // Verify file URL banner is removed
+          assert(!content.includes('_showFileUrlDisabledBanner'),
+            '_showFileUrlDisabledBanner is removed');
+          assert(!content.includes("sm.set('enableFileUrl', true)"),
+            'enableFileUrl storage set is removed');
 
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);

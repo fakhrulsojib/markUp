@@ -3,7 +3,7 @@
  *
  * Controls the extension popup UI. Manages:
  * - Theme quick-switch
- * - Toggle switches (file:// URLs, auto-detect)
+ * - Toggle switch (Enable MarkUp)
  * - Recent files list (from service worker via MessageBus)
  * - Options page link
  *
@@ -163,17 +163,12 @@
     if (!storage) return;
 
     try {
-      const fileUrlEnabled = await storage.get('enableFileUrl');
-      const autoDetect = await storage.get('autoDetect');
+      const enabled = await storage.get('enabled');
 
-      const fileUrlToggle = document.getElementById('markup-toggle-fileurl');
-      const autoDetectToggle = document.getElementById('markup-toggle-autodetect');
+      const enabledToggle = document.getElementById('markup-toggle-enabled');
 
-      if (fileUrlToggle) {
-        fileUrlToggle.checked = fileUrlEnabled !== false; // Default: true
-      }
-      if (autoDetectToggle) {
-        autoDetectToggle.checked = autoDetect !== false; // Default: true
+      if (enabledToggle) {
+        enabledToggle.checked = enabled !== false; // Default: true
       }
     } catch (err) {
       console.warn('Popup: Failed to load toggle states:', err);
@@ -185,63 +180,34 @@
    * @private
    */
   function _wireToggleSwitches() {
-    const fileUrlToggle = document.getElementById('markup-toggle-fileurl');
-    const autoDetectToggle = document.getElementById('markup-toggle-autodetect');
+    const enabledToggle = document.getElementById('markup-toggle-enabled');
 
-    if (fileUrlToggle) {
-      fileUrlToggle.addEventListener('change', _onFileUrlToggle);
-    }
-    if (autoDetectToggle) {
-      autoDetectToggle.addEventListener('change', _onAutoDetectToggle);
+    if (enabledToggle) {
+      enabledToggle.addEventListener('change', _onEnabledToggle);
     }
   }
 
   /**
-   * Handle file:// URL toggle change.
+   * Handle Enable MarkUp toggle change.
    * @param {Event} event
    * @private
    */
-  async function _onFileUrlToggle(event) {
-    const enabled = event.target.checked;
+  async function _onEnabledToggle(event) {
+    const isEnabled = event.target.checked;
     if (storage) {
       try {
-        await storage.set('enableFileUrl', enabled);
+        await storage.set('enabled', isEnabled);
       } catch (err) {
-        console.warn('Popup: Failed to save file URL toggle:', err);
+        console.warn('Popup: Failed to save enabled toggle:', err);
       }
     }
-    // Notify content scripts so file:// tabs respond live
+    // Notify service worker + content scripts so state updates immediately
     if (messageBus) {
       try {
-        await messageBus.send('APPLY_ENABLE_FILE_URL', { enableFileUrl: enabled });
+        await messageBus.send('APPLY_ENABLED', { enabled: isEnabled });
       } catch (err) {
         const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
-        if (_Log) { _Log.debug('Popup', 'File URL toggle notification sent.'); }
-      }
-    }
-  }
-
-  /**
-   * Handle auto-detect toggle change.
-   * @param {Event} event
-   * @private
-   */
-  async function _onAutoDetectToggle(event) {
-    const enabled = event.target.checked;
-    if (storage) {
-      try {
-        await storage.set('autoDetect', enabled);
-      } catch (err) {
-        console.warn('Popup: Failed to save auto-detect toggle:', err);
-      }
-    }
-    // Notify service worker so dynamic injection is updated immediately
-    if (messageBus) {
-      try {
-        await messageBus.send('APPLY_AUTO_DETECT', { autoDetect: enabled });
-      } catch (err) {
-        const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
-        if (_Log) { _Log.debug('Popup', 'Auto-detect toggle notification sent.'); }
+        if (_Log) { _Log.debug('Popup', 'Enabled toggle notification sent.'); }
       }
     }
   }

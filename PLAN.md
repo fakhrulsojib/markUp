@@ -821,7 +821,7 @@ classDiagram
 - Design popup layout:
   - Extension name/logo header.
   - Current theme quick-switch (3 theme icon buttons).
-  - Toggle switches: "Enable on file:// URLs", "Auto-detect .md files".
+  - Toggle switch: "Enable MarkUp".
   - Recent files list (last 5 Markdown URLs opened, stored in `StorageManager`).
   - "Options" link → opens options page.
 - `popup.js`:
@@ -1045,12 +1045,12 @@ classDiagram
   - If `false`, skip dynamic injection entirely — only manifest-declared static matches will trigger the content script.
   - This does NOT affect static content script matches (those are controlled by Chrome itself).
 
-- **`enableFileUrl` (Popup toggle):**
-  - In `content-script.js`, check this setting at pipeline start for `file://` URLs.
-  - If `false` and the current URL is `file://`, skip rendering. Show a banner: "MarkUp is disabled for local files. [Enable]".
+- **`enableFileUrl` (Popup toggle):** ⚠️ *Later removed — global `enabled` toggle is sufficient.*
+  - ~~In `content-script.js`, check this setting at pipeline start for `file://` URLs.~~
+  - ~~If `false` and the current URL is `file://`, skip rendering. Show a banner: "MarkUp is disabled for local files. [Enable]".~~
   - Note: This is an in-app soft toggle. Chrome's "Allow access to file URLs" permission is the hard gate and cannot be controlled programmatically.
 
-> ✅ **Verify:** Disable auto-render in Options → open a `.md` file → raw text visible with banner. Re-enable → renders immediately. Disable `autoDetect` in Popup → open an `.mdown` file (not in static matches) → no rendering. Enable → works again. Disable `enableFileUrl` → `file://` `.md` file shows raw with banner.
+> ✅ **Verify:** Disable MarkUp in Options → open a `.md` file → raw text visible with banner. Re-enable → renders immediately.
 
 #### Step 9.2 — Wire `debugLog` Toggle
 
@@ -1065,33 +1065,23 @@ classDiagram
 
 > ✅ **Verify:** With debug logging OFF (default): open a `.md` file → no console output except warnings/errors. Enable debug logging → refresh → verbose pipeline logs visible (e.g., "MarkUp: Parsing 1234 chars", "MarkUp: Rendering complete in 42ms", "MarkUp: Theme applied: dark").
 
-#### Step 9.3 — Unify & Simplify Settings: Resolve `autoDetect` / `autoRender` / `extensions` Overlap
+#### Step 9.3 — Unify & Simplify Settings: Resolve `autoDetect` / `autoRender` / `extensions` Overlap ✅
 
-> ⚠️ **Context:** During Step 9.1 implementation, a semantic overlap was identified between three settings that control related but confusingly similar behavior. The popup and options page use different names for related concepts, creating a confusing mental model.
+> ✅ **Completed:** Consolidated `autoDetect` + `autoRender` into single `enabled` toggle. Bug fixed: `APPLY_AUTO_DETECT` had no service worker listener.
 
-**Current state (problematic):**
+**Resolved state:**
 
 | Setting | Location | What it does | Storage key |
 |---------|----------|-------------|-------------|
-| `Auto-detect .md files` | Popup | Gates dynamic injection in service worker | `autoDetect` |
-| `Auto-render Markdown files` | Options → Behavior | Gates content script rendering pipeline | `autoRender` |
-| `Enable on file:// URLs` | Popup | Gates rendering on file:// protocol | `enableFileUrl` |
-| `File Extensions` | Options → Behavior | Customizes which extensions trigger detection | `extensions` |
+| `Enable MarkUp` | Popup + Options | Master on/off — gates both dynamic injection and rendering | `enabled` |
+| `File Extensions` | Options → Behavior | Customizes which extensions trigger detection (wired in Step 9.4) | `extensions` |
 
-**Problems:**
-1. `autoDetect` and `autoRender` sound like the same thing to a user but control different phases.
-2. If `autoRender` is OFF, `autoDetect` still injects scripts that do nothing (wasted work).
-3. `autoDetect` and `extensions` are both detection-phase controls but live in different UIs.
-4. Popup and Options page don't share terminology — a user toggling things in both places gets confused.
-
-**Goal of this step:** Re-evaluate these settings and refactor so that:
-- [ ] The **popup** and **options page** use the **same setting names** for the same toggles — no setting should exist in only one place with a different name elsewhere.
-- [ ] Each toggle has a **single, clear meaning** — no two toggles that essentially do the same thing.
-- [ ] Eliminate dead combinations (e.g., `autoRender=OFF` + `autoDetect=ON` = wasted injection).
-- [ ] Both UIs stay in sync — changing a toggle in popup reflects in options and vice versa.
-- [ ] Document the final consolidated settings model clearly.
-
-> ✅ **Verify:** Open popup and options page side by side — every toggle that appears in both uses the exact same label and controls the exact same storage key. No ambiguous or redundant toggles remain.
+**What was done:**
+- [x] The **popup** and **options page** use the **same setting names** for the same toggles — no setting should exist in only one place with a different name elsewhere.
+- [x] Each toggle has a **single, clear meaning** — no two toggles that essentially do the same thing.
+- [x] Eliminate dead combinations (e.g., `autoRender=OFF` + `autoDetect=ON` = wasted injection).
+- [x] Both UIs stay in sync — changing a toggle in popup reflects in options and vice versa.
+- [x] Document the final consolidated settings model clearly.
 
 #### Step 9.4 — Wire `extensions` (Custom File Extensions)
 

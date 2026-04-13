@@ -98,8 +98,7 @@
 - [ ] Theme quick-switch: 3 buttons (Light, Dark, Sepia)
 - [ ] Active theme button highlighted
 - [ ] Theme switch persists across popup close/reopen
-- [ ] Toggle: "Enable on file:// URLs"
-- [ ] Toggle: "Auto-detect .md files"
+- [ ] Toggle: "Enable MarkUp"
 - [ ] Recent files list shows last 5 files
 - [ ] Click recent file → opens in new tab
 - [ ] "Options" link → opens options page

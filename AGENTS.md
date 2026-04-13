@@ -16,7 +16,7 @@
 | 6 | ✅ Done | 2026-04-12 | UI components: toolbar, TOC, search, settings, keyboard, print |
 | 7 | ✅ Done | 2026-04-12 | Popup, options page, recent files, UX polish, a11y, packaging |
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
-| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.2 done) |
+| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.3 done) |
 
 ---
 
@@ -261,14 +261,14 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 ## Phase 9 — Settings Backend Wiring
 **Steps 9.1–9.2 Completed · Steps 9.3–9.6 Pending**
 
-### Step 9.1 — `autoRender`, `autoDetect`, `enableFileUrl` ✅
+### Step 9.1 — `autoRender`, `autoDetect`, `enableFileUrl` ✅ (⚠️ `enableFileUrl` later removed)
 
 **Files Modified:**
-- `src/utils/constants.js` — Added `DEFAULTS.AUTORENDER`, `AUTODETECT`, `ENABLEFILEURL` (all default `true`).
-- `src/content/content-script.js` — `autoRender` and `enableFileUrl` gates in `run()`. Info banners with "Enable" buttons. `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` listeners (trigger reload).
-- `src/background/service-worker.js` — `autoDetect` gate wrapping dynamic injection (async IIFE). `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` relay handlers. `settingsStorage` instance added.
+- `src/utils/constants.js` — Added `DEFAULTS.AUTORENDER`, `AUTODETECT`, `ENABLEFILEURL` (all default `true`). *(`ENABLEFILEURL` later removed.)*
+- `src/content/content-script.js` — `autoRender` and `enableFileUrl` gates in `run()`. Info banners with "Enable" buttons. `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` listeners (trigger reload). *(`enableFileUrl` gate and banner later removed.)*
+- `src/background/service-worker.js` — `autoDetect` gate wrapping dynamic injection (async IIFE). `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` relay handlers. `settingsStorage` instance added. *(`APPLY_ENABLE_FILE_URL` relay later removed.)*
 - `src/options/options.js` — `APPLY_AUTO_RENDER` notification on toggle.
-- `src/popup/popup.js` — `APPLY_ENABLE_FILE_URL` and `APPLY_AUTO_DETECT` notifications on toggles.
+- `src/popup/popup.js` — `APPLY_ENABLE_FILE_URL` and `APPLY_AUTO_DETECT` notifications on toggles. *(`APPLY_ENABLE_FILE_URL` later removed.)*
 
 **Key Decisions:**
 - Gates use `=== false` — `undefined` treated as enabled (backward compat).
@@ -277,10 +277,34 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 - `autoDetect` gate wraps dynamic injection in async IIFE (tabs.onUpdated doesn't support async callbacks).
 
 ### Remaining Steps
-- **9.3:** Investigate `autoDetect` / `autoRender` / `extensions` overlap
 - **9.4:** Custom file extensions → `FileDetector.setCustomExtensions()`
 - **9.5:** `cspStrict` → restrictive Sanitizer config
 - **9.6:** Tests & documentation
+
+---
+
+### Step 9.3 — Unify & Simplify Settings ✅
+
+> Consolidated `autoDetect` + `autoRender` into a single `enabled` master toggle. Both popup and options now use identical labels and storage keys.
+
+**Files Modified:**
+- `src/utils/constants.js` — Removed `DEFAULTS.AUTORENDER` and `DEFAULTS.AUTODETECT`, added `DEFAULTS.ENABLED: true`.
+- `src/popup/popup.html` — Renamed "Auto-detect .md files" → "Enable MarkUp", `id` changed to `markup-toggle-enabled`.
+- `src/popup/popup.js` — Storage key `autoDetect` → `enabled`, message `APPLY_AUTO_DETECT` → `APPLY_ENABLED`.
+- `src/options/options.html` — Renamed "Auto-render Markdown files" → "Enable MarkUp". *("Enable on file:// URLs" toggle was briefly added, then removed.)*
+- `src/options/options.js` — Storage key `autoRender` → `enabled`, message `APPLY_AUTO_RENDER` → `APPLY_ENABLED`. *(`enableFileUrl` toggle wiring later removed.)*
+- `src/content/content-script.js` — Gate `autoRender` → `enabled`, listener `APPLY_AUTO_RENDER` → `APPLY_ENABLED`, banner text updated.
+- `src/background/service-worker.js` — Gate `autoDetect` → `enabled`, listener `APPLY_AUTO_RENDER` → `APPLY_ENABLED`.
+- `tests/phase9-step91-browser-verify.html` — Updated 21 assertions to match new storage keys and message actions.
+
+**Bug Fixed:**
+- `APPLY_AUTO_DETECT` was sent by popup.js but had **no listener** in service-worker.js — the message went into the void. The consolidated `APPLY_ENABLED` now has a proper relay.
+
+**Key Decisions:**
+- `enabled` replaces both `autoDetect` and `autoRender` — single toggle controls both dynamic injection and rendering.
+- No migration script needed (pre-release, orphaned keys acceptable).
+- In-page SettingsPanel does NOT get an Enable/Disable toggle (popup + options sufficient).
+- ~~`enableFileUrl` stays as a separate toggle~~ — **Removed:** global `enabled` toggle is sufficient; no separate file:// gate needed.
 
 ---
 
@@ -321,8 +345,9 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | Phase 6 | `tests/phase6-browser-verify.html` | 143 tests |
 | Phase 7 | `tests/phase7-browser-verify.html` | Phase 7 deliverables |
 | Phase 8 | `tests/phase8-browser-verify.html` | 78 tests |
-| Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 132 tests |
+| Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 131 tests |
 | Phase 9.2 | `tests/phase9-step92-browser-verify.html` | 58 tests |
+| Phase 9.3 | `tests/phase9-step93-browser-verify.html` | 54 tests |
 
 ---
 
@@ -337,6 +362,8 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | `_runPipeline()` is async (was sync in plan) | Needed for `StorageManager.get()` which returns Promise |
 | `StorageManager.js` added to static content_scripts | Was missing since Phase 3 — fixed in Phase 6 as bugfix |
 | Toolbar has 6 buttons (plan said 5) | Drag handle added in Phase 8 |
+| `autoDetect` + `autoRender` merged into `enabled` | Phase 9.3: eliminated dead combos and semantic overlap |
+| `enableFileUrl` toggle removed entirely | Global `enabled` toggle is sufficient; no separate file:// gate needed |
 
 ---
 
