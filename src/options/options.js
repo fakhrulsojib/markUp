@@ -60,6 +60,9 @@
       await LoggerClass.init();
     }
 
+    // Apply theme to options page body FIRST (before any other rendering)
+    await _applyThemeOnLoad();
+
     // Load all current settings
     await _loadAllSettings();
 
@@ -68,6 +71,7 @@
     _wireBehaviorControls();
     _wireAdvancedControls();
     _wireResetButton();
+    _wireThemeRelay();
   }
 
   // --- Load Settings ---
@@ -130,6 +134,7 @@
     // Theme
     _wireSelect('markup-opt-theme', async (value) => {
       await _saveSetting('theme', value);
+      _applyThemeToBody(value);
       await _notifyContentScript('APPLY_THEME', { theme: value });
     });
 
@@ -232,6 +237,7 @@
 
       // Reload UI
       await _loadAllSettings();
+      _applyThemeToBody(DEFAULTS.THEME);
       _showSaveStatus();
     } catch (err) {
       console.warn('Options: Failed to reset settings:', err);
@@ -274,6 +280,70 @@
       }
     }
   }
+
+  /**
+   * Show the "Saved" status bar briefly.
+   * @private
+   */
+
+  // --- Theme Application ---
+
+  /**
+   * Apply the persisted theme to the options page body on load.
+   * Reads the theme from storage and applies the CSS class.
+   * Also removes the flash-prevention loading class.
+   * @private
+   */
+  async function _applyThemeOnLoad() {
+    let themeName = 'light';
+
+    if (storage) {
+      try {
+        const savedTheme = await storage.get('theme');
+        if (savedTheme && typeof savedTheme === 'string') {
+          themeName = savedTheme;
+        }
+      } catch (err) {
+        // Default to light on error
+      }
+    }
+
+    _applyThemeToBody(themeName);
+
+    // Remove flash-prevention class
+    document.body.classList.remove('markup-theme-loading');
+  }
+
+  /**
+   * Apply a theme class to the options page body.
+   * Removes all existing theme classes and adds the new one.
+   * @param {string} themeName - The theme to apply.
+   * @private
+   */
+  function _applyThemeToBody(themeName) {
+    document.body.classList.remove('markup-theme-light', 'markup-theme-dark', 'markup-theme-sepia');
+    document.body.classList.add('markup-theme-' + themeName);
+  }
+
+  /**
+   * Wire MessageBus listener for live APPLY_THEME relay.
+   * When the popup or content script changes the theme,
+   * the options page updates to match.
+   * @private
+   */
+  function _wireThemeRelay() {
+    if (!messageBus) return;
+
+    messageBus.listen('APPLY_THEME', (payload) => {
+      if (payload && payload.theme) {
+        _applyThemeToBody(payload.theme);
+        _setSelectValue('markup-opt-theme', payload.theme);
+      }
+      return { success: true };
+    });
+  }
+
+  // --- Helpers ---
 
   /**
    * Show the "Saved" status bar briefly.

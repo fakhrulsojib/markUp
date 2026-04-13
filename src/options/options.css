@@ -3,6 +3,9 @@
  *
  * Full-page settings UI matching the MarkUp design language.
  * Clean, organized sections with responsive layout.
+ *
+ * Theme-aware: Uses CSS custom properties from extension-theme.css
+ * so the options page matches the user's selected theme (light/dark/sepia).
  */
 
 /* --- Reset & Base --- */
@@ -16,8 +19,8 @@
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
-  color: #24292f;
-  background-color: #f6f8fa;
+  color: var(--markup-text-primary, #24292f);
+  background-color: var(--markup-bg-secondary, #f6f8fa);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
@@ -50,21 +53,21 @@ body {
 .markup-options-logo h1 {
   font-size: 22px;
   font-weight: 600;
-  color: #24292f;
+  color: var(--markup-text-primary, #24292f);
   letter-spacing: -0.02em;
 }
 
 .markup-options-subtitle {
   font-size: 13px;
-  color: #656d76;
+  color: var(--markup-text-secondary, #656d76);
   margin-top: 2px;
 }
 
 /* --- Status Bar --- */
 
 .markup-options-status {
-  background: #dafbe1;
-  color: #1a7f37;
+  background: var(--markup-ext-success-bg, #dafbe1);
+  color: var(--markup-ext-success-color, #1a7f37);
   padding: 8px 16px;
   border-radius: 8px;
   font-size: 13px;
@@ -86,8 +89,8 @@ body {
 /* --- Sections --- */
 
 .markup-options-section {
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--markup-ext-card-bg, #ffffff);
+  border: 1px solid var(--markup-border, #d0d7de);
   border-radius: 12px;
   padding: 20px 24px;
   margin-bottom: 16px;
@@ -96,10 +99,10 @@ body {
 .markup-options-section h2 {
   font-size: 15px;
   font-weight: 600;
-  color: #24292f;
+  color: var(--markup-text-primary, #24292f);
   margin-bottom: 16px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #eaeef2;
+  border-bottom: 1px solid var(--markup-ext-hover-bg, #eaeef2);
 }
 
 /* --- Fields --- */
@@ -116,7 +119,7 @@ body {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: #24292f;
+  color: var(--markup-text-primary, #24292f);
   margin-bottom: 6px;
 }
 
@@ -127,9 +130,9 @@ body {
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
-  color: #24292f;
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  color: var(--markup-text-primary, #24292f);
+  background: var(--markup-ext-input-bg, #f6f8fa);
+  border: 1px solid var(--markup-ext-input-border, #d0d7de);
   border-radius: 6px;
   cursor: pointer;
   transition: border-color 0.15s ease;
@@ -137,12 +140,12 @@ body {
 }
 
 .markup-options-select:hover {
-  border-color: #a3aab2;
+  border-color: var(--markup-text-secondary, #a3aab2);
 }
 
 .markup-options-select:focus {
   outline: none;
-  border-color: #0969da;
+  border-color: var(--markup-accent, #0969da);
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
 }
 
@@ -153,7 +156,7 @@ body {
   height: 6px;
   appearance: none;
   -webkit-appearance: none;
-  background: #d0d7de;
+  background: var(--markup-border, #d0d7de);
   border-radius: 3px;
   outline: none;
   cursor: pointer;
@@ -164,7 +167,7 @@ body {
   -webkit-appearance: none;
   width: 18px;
   height: 18px;
-  background: #0969da;
+  background: var(--markup-accent, #0969da);
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -178,7 +181,7 @@ body {
 .markup-options-range::-moz-range-thumb {
   width: 18px;
   height: 18px;
-  background: #0969da;
+  background: var(--markup-accent, #0969da);
   border: none;
   border-radius: 50%;
   cursor: pointer;
@@ -196,45 +199,45 @@ body {
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
-  color: #24292f;
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  color: var(--markup-text-primary, #24292f);
+  background: var(--markup-ext-input-bg, #f6f8fa);
+  border: 1px solid var(--markup-ext-input-border, #d0d7de);
   border-radius: 6px;
   transition: border-color 0.15s ease;
 }
 
 .markup-options-input:hover {
-  border-color: #a3aab2;
+  border-color: var(--markup-text-secondary, #a3aab2);
 }
 
 .markup-options-input:focus {
   outline: none;
-  border-color: #0969da;
+  border-color: var(--markup-accent, #0969da);
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
 }
 
 .markup-options-input.markup-options-readonly {
-  background: #eaeef2;
-  color: #656d76;
+  background: var(--markup-ext-hover-bg, #eaeef2);
+  color: var(--markup-text-secondary, #656d76);
   cursor: not-allowed;
-  border-color: #d0d7de;
+  border-color: var(--markup-border, #d0d7de);
 }
 
 .markup-options-input.markup-options-readonly:hover {
-  border-color: #d0d7de;
+  border-color: var(--markup-border, #d0d7de);
 }
 
 .markup-options-help {
   margin-top: 6px;
   font-size: 12px;
-  color: #656d76;
+  color: var(--markup-text-secondary, #656d76);
   line-height: 1.5;
 }
 
 .markup-options-help code {
   font-size: 11px;
   padding: 1px 5px;
-  background: #eaeef2;
+  background: var(--markup-ext-code-bg, #eaeef2);
   border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
@@ -257,7 +260,7 @@ body {
   -webkit-appearance: none;
   width: 40px;
   height: 22px;
-  background: #afb8c1;
+  background: var(--markup-ext-toggle-bg, #afb8c1);
   border-radius: 11px;
   position: relative;
   cursor: pointer;
@@ -279,7 +282,7 @@ body {
 }
 
 .markup-options-toggle:checked {
-  background: #0969da;
+  background: var(--markup-ext-toggle-checked, #0969da);
 }
 
 .markup-options-toggle:checked::after {
@@ -287,7 +290,7 @@ body {
 }
 
 .markup-options-toggle:focus-visible {
-  outline: 2px solid #0969da;
+  outline: 2px solid var(--markup-accent, #0969da);
   outline-offset: 2px;
 }
 
@@ -301,7 +304,7 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
-  border-bottom: 1px solid #eaeef2;
+  border-bottom: 1px solid var(--markup-ext-hover-bg, #eaeef2);
 }
 
 .markup-about-row:last-child {
@@ -310,18 +313,27 @@ body {
 
 .markup-about-label {
   font-size: 13px;
-  color: #656d76;
+  color: var(--markup-text-secondary, #656d76);
 }
 
 .markup-about-value {
   font-size: 13px;
   font-weight: 500;
-  color: #24292f;
+  color: var(--markup-text-primary, #24292f);
+}
+
+.markup-about-value a {
+  color: var(--markup-accent, #0969da);
+  text-decoration: none;
+}
+
+.markup-about-value a:hover {
+  text-decoration: underline;
 }
 
 .markup-about-credits {
   font-size: 12px;
-  color: #656d76;
+  color: var(--markup-text-secondary, #656d76);
   text-align: center;
   padding-top: 8px;
 }
@@ -338,20 +350,20 @@ body {
   font-size: 13px;
   font-family: inherit;
   font-weight: 500;
-  color: #cf222e;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  color: var(--markup-ext-danger-color, #cf222e);
+  background: var(--markup-ext-card-bg, #ffffff);
+  border: 1px solid var(--markup-border, #d0d7de);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .markup-options-reset-btn:hover {
-  background: #ffebe9;
-  border-color: #cf222e;
+  background: var(--markup-ext-danger-hover-bg, #ffebe9);
+  border-color: var(--markup-ext-danger-color, #cf222e);
 }
 
 .markup-options-reset-btn:focus-visible {
-  outline: 2px solid #cf222e;
+  outline: 2px solid var(--markup-ext-danger-color, #cf222e);
   outline-offset: 2px;
 }

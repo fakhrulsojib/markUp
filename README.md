@@ -41,6 +41,7 @@ No apps to install, no copying into an online viewer. Just open your file.
 - 📥 **Download Interception** — open `.md` downloads from Slack, email, etc. in a rendered tab instead of saving to disk
 - 🖼️ **Branded Favicon** — MarkUp logo displayed in the browser tab for all rendered pages
 - 🗑️ **Clear File History** — one-click clear of recent files list in the popup
+- 🌗 **Themed Extension Pages** — popup and options pages follow your selected theme (light/dark/sepia)
 
 ---
 
@@ -152,6 +153,7 @@ src/
 │   │   └── sepia.css
 │   ├── typography.css
 │   ├── ui-components.css
+│   ├── extension-theme.css  # Shared theme for popup/options
 │   ├── code-highlight.css
 │   └── print.css
 ├── utils/

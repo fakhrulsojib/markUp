@@ -19,6 +19,7 @@
 | 9 | ✅ Done | 2026-04-13 | Settings backend wiring (enabled, debugLog, extensions, cspStrict) |
 | 10 | ✅ Done | 2026-04-13 | Download interception, viewer.html, popup notification |
 | 10.5 | ✅ Done | 2026-04-13 | Save fix, favicon, icon consolidation, clear history, version bump |
+| 11 | ✅ Done | 2026-04-13 | Themed extension pages: popup + options follow user's theme |
 
 ---
 
@@ -354,6 +355,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | Phase 9.5 | `tests/phase9-step95-browser-verify.html` | 60 tests |
 | Phase 10 | `tests/phase10-browser-verify.html` | ~70 tests |
 | Phase 10.5 | `tests/phase10.5-browser-verify.html` | Post-release polish |
+| Phase 11 | `tests/phase11-browser-verify.html` | 74 tests — themed extension pages |
 
 ---
 
@@ -436,6 +438,44 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 - **Blob save over re-fetch:** Original URL may have expired (Google Chat tokens). Blob is always available.
 - **Triple interception guard:** `blob:` URL check + `data:` URL check + `byExtensionId` check — belt and suspenders.
 - **Icon consolidation:** Single `icon-transparent.png` for all sizes — Chrome auto-scales. Simplifies maintenance.
+
+---
+
+> **For future agents:** Always check this file's "Known Deviations" section, the "Settings Model" table, and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their Phase 1 skeletons.
+
+---
+
+## Phase 11 — Themed Extension Pages
+**Steps 11.1–11.5 · All Completed**
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `src/styles/extension-theme.css` | Shared theme stylesheet for extension pages — CSS custom properties scoped to `body.markup-theme-*` selectors for light/dark/sepia. Includes flash prevention (`.markup-theme-loading`) and smooth transitions. Extension-specific tokens: `--markup-ext-card-bg`, `--markup-ext-toggle-bg`, `--markup-ext-notice-*`, `--markup-ext-danger-*`, etc. |
+| `tests/phase11-browser-verify.html` | 74 tests covering extension-theme.css structure, popup theming, options theming, live relay, and regression checks |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `src/popup/popup.html` | Added `<link>` for `extension-theme.css` before `popup.css`. Added `class="markup-theme-loading"` to `<body>`. |
+| `src/popup/popup.css` | Replaced ~30 hardcoded color values with CSS custom properties. No layout changes. |
+| `src/popup/popup.js` | Added `_applyThemeOnLoad()`, `_applyThemeToBody()`, `_wireThemeRelay()`. Theme applied before any rendering. Live `APPLY_THEME` listener. |
+| `src/options/options.html` | Added `<link>` for `extension-theme.css` before `options.css`. Added `class="markup-theme-loading"` to `<body>`. |
+| `src/options/options.css` | Replaced ~40 hardcoded color values with CSS custom properties. No layout changes. |
+| `src/options/options.js` | Added `_applyThemeOnLoad()`, `_applyThemeToBody()`, `_wireThemeRelay()`. Theme applied on select change + reset. |
+
+### Key Decisions
+- **No service worker changes needed.** Existing SW relay already broadcasts `APPLY_THEME` via `chrome.runtime.sendMessage()`, which extension pages can receive.
+- **No changes to content-script theme files.** `variables.css`, `light.css`, `dark.css`, `sepia.css`, `ThemeManager.js`, and `ui-components.css` are completely untouched — zero regression risk to content rendering.
+- **Flash prevention via CSS class.** `body.markup-theme-loading { opacity: 0 }` is set in HTML, removed by JS after theme class is applied. Eliminates "flash of light theme" on dark/sepia users.
+- **Extension-specific CSS tokens.** Created `--markup-ext-*` variables (card backgrounds, toggles, notices, danger colors) that don't exist in content-script themes. These are only consumed by popup/options CSS.
+- **Default body variables match existing hardcoded values.** Pages look identical to pre-Phase 11 when no theme class is applied (gradual degradation).
+
+### Known Deviations
+| Deviation | Reason |
+|-----------|--------|
+| Separate `extension-theme.css` instead of reusing content theme CSS files | Content themes scope to `.markup-content` / `body.markup-body`; extension pages need `body`-level scoping without requiring markup-body class |
+| Extension-specific `--markup-ext-*` tokens added | Content themes lack variables for UI chrome (toggles, notices, danger buttons); extension pages need these tokens |
 
 ---
 
