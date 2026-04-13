@@ -1026,5 +1026,112 @@ classDiagram
 
 ---
 
-> **End of PLAN.md — v0.2.0 Released | Phase 8 Done**
+### Phase 9: Settings Backend Wiring (Options & Popup)
+
+> **Context:** Phase 7 built the Options page and Popup UI with save/load for 6 settings beyond Appearance. However, the backend consumers were never implemented — those settings are persisted to `chrome.storage` but **no code reads them**. This phase wires each setting into its consumer.
+
+#### Step 9.1 — Wire `autoRender` Toggle + Popup `autoDetect` / `enableFileUrl` ✅ Done
+
+- **`autoRender` (Options → Behavior):**
+  - In `content-script.js`, at the start of `_runPipeline()` (after detection, before parsing):
+    - Read `autoRender` from `StorageManager`.
+    - If `false`, skip the parse/render pipeline entirely and leave the raw Markdown visible (as the browser would natively display it).
+    - Show a subtle banner at the top: "MarkUp auto-rendering is disabled. [Enable]" with a click handler that sets `autoRender: true` and re-runs the pipeline.
+  - Add `APPLY_AUTO_RENDER` MessageBus listener in the content script so toggling it from the Options page takes effect live (no refresh).
+  - Add `APPLY_AUTO_RENDER` relay in `service-worker.js`.
+
+- **`autoDetect` (Popup toggle):**
+  - In `service-worker.js`, the `chrome.tabs.onUpdated` dynamic injection handler should read `autoDetect` from `StorageManager`.
+  - If `false`, skip dynamic injection entirely — only manifest-declared static matches will trigger the content script.
+  - This does NOT affect static content script matches (those are controlled by Chrome itself).
+
+- **`enableFileUrl` (Popup toggle):**
+  - In `content-script.js`, check this setting at pipeline start for `file://` URLs.
+  - If `false` and the current URL is `file://`, skip rendering. Show a banner: "MarkUp is disabled for local files. [Enable]".
+  - Note: This is an in-app soft toggle. Chrome's "Allow access to file URLs" permission is the hard gate and cannot be controlled programmatically.
+
+> ✅ **Verify:** Disable auto-render in Options → open a `.md` file → raw text visible with banner. Re-enable → renders immediately. Disable `autoDetect` in Popup → open an `.mdown` file (not in static matches) → no rendering. Enable → works again. Disable `enableFileUrl` → `file://` `.md` file shows raw with banner.
+
+#### Step 9.2 — Wire `debugLog` Toggle
+
+- Create a `Logger` utility class or module (`src/utils/logger.js`):
+  - `Logger.debug(context, ...args)` — only logs when `debugLog` is `true` in storage.
+  - `Logger.warn(context, ...args)` — always logs (warnings are always visible).
+  - `Logger.error(context, ...args)` — always logs.
+  - Cached `_enabled` flag, refreshed on `StorageManager` change or via a `APPLY_DEBUG_LOG` message.
+- Replace unconditional `console.log()` calls in `content-script.js`, `service-worker.js`, `popup.js`, and `options.js` with `Logger.debug()` calls.
+- Keep `console.warn()` and `console.error()` calls as-is (these should always output).
+- Wire `APPLY_DEBUG_LOG` MessageBus listener in content script + relay in service worker.
+
+> ✅ **Verify:** With debug logging OFF (default): open a `.md` file → no console output except warnings/errors. Enable debug logging → refresh → verbose pipeline logs visible (e.g., "MarkUp: Parsing 1234 chars", "MarkUp: Rendering complete in 42ms", "MarkUp: Theme applied: dark").
+
+#### Step 9.3 — Wire `extensions` (Custom File Extensions)
+
+- In `service-worker.js`:
+  - On startup and on `APPLY_EXTENSIONS` message, read the `extensions` string from `StorageManager`.
+  - Parse it into an array of extensions (split by `,`, trim, normalize to lowercase, ensure each starts with `.`).
+  - Build dynamic RegExp patterns from the custom extensions list.
+  - Update `FileDetector` to accept custom patterns via a `setPatterns(patterns)` method or a new constructor option.
+  - Use the updated patterns in the `chrome.tabs.onUpdated` dynamic injection handler.
+- In `FileDetector.js`:
+  - Add `setCustomExtensions(extensions)` method that rebuilds `_patterns` from the provided extension list.
+  - Merge with (not replace) the built-in patterns from `constants.js`.
+- Add `APPLY_EXTENSIONS` relay in `service-worker.js` — when the user changes extensions in the Options page, the service worker reloads patterns immediately.
+- **Note:** Static `content_scripts.matches` in `manifest.json` cannot be changed at runtime. Custom extensions only affect dynamic injection. This is an inherent Chrome limitation — document it in the Options page UI with a help tooltip.
+
+> ✅ **Verify:** Add `.txt` to the extensions list in Options → open a `notes.txt` file → MarkUp renders it. Remove `.txt` → open another `.txt` file → raw text (no rendering). Default extensions (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`) always work.
+
+#### Step 9.4 — Wire `cspStrict` Toggle
+
+- In `content-script.js`, at the start of the pipeline (after `autoRender` check):
+  - Read `cspStrict` from `StorageManager`.
+  - If `true` (strict mode — the default): pass a restrictive config to `Sanitizer`:
+    - Remove `img` from allowed tags (prevent external image loading).
+    - Remove `a[href]` for external URLs (only allow `#anchor` links).
+    - Block `data:` URLs in `_isSafeUrl()`.
+  - If `false` (relaxed mode): use the current default whitelist (which allows `img`, `a`, `data:`).
+- Add `APPLY_CSP_STRICT` MessageBus listener in content script — when toggled, re-sanitize and re-render the current document with the new whitelist.
+- Add `APPLY_CSP_STRICT` relay in `service-worker.js`.
+- Update the Options page tooltip/description for this toggle to explain: "Strict mode blocks external images and links. Recommended for untrusted Markdown files."
+
+> ✅ **Verify:** With strict CSP ON: open a `.md` file with `![img](https://example.com/photo.jpg)` → image tag is stripped, not rendered. Turn strict CSP OFF → re-render → image appears. Links to external URLs blocked in strict mode, allowed in relaxed mode.
+
+#### Step 9.5 — Append to AGENTS.md & Tests
+
+- Document Steps 9.1–9.4 in AGENTS.md.
+- Create `tests/phase9-browser-verify.html` with test groups covering:
+  - `autoRender` flag read and pipeline skip.
+  - `debugLog` flag read and Logger output control.
+  - `extensions` custom pattern parsing and `FileDetector.setCustomExtensions()`.
+  - `cspStrict` sanitizer config switching.
+  - MessageBus relay handlers for all 4 new actions.
+  - Regression: existing Appearance settings still work.
+- Update `README.md` with documentation for each setting's behavior.
+
+> ✅ **Verify:** All Phase 9 tests pass. All previous test suites (Phase 2–8) still pass with zero regressions. Documentation is current.
+
+#### Step 9.6 — Investigate Settings Overlap: `autoDetect` vs `autoRender` vs `extensions`
+
+> ⚠️ **Incident note:** During Step 9.1 implementation, a semantic overlap was identified between three settings that control related behavior:
+
+- **`autoDetect`** (Popup) — gates dynamic injection in the service worker (detection phase).
+- **`autoRender`** (Options → Behavior) — gates the content script pipeline (rendering phase).
+- **`extensions`** (Options → Behavior) — customizes which file extensions trigger detection.
+
+**Observed issues:**
+1. `autoDetect` and `extensions` both control the same detection phase — if `autoDetect` is OFF, custom `extensions` are irrelevant.
+2. If `autoRender` is OFF, `autoDetect` still injects content scripts that do nothing (wasted work).
+3. A user disabling `autoRender` likely also wants `autoDetect` off, but they are in different UIs (Options vs Popup).
+4. The three settings create a confusing mental model for users — it's unclear which combination of toggles achieves a desired behavior.
+
+**Action items — investigate and decide:**
+- [ ] Should `autoDetect` be consolidated into the Options page alongside `extensions` (both are detection-phase controls)?
+- [ ] Should `autoRender: false` implicitly disable dynamic injection (eliminating the need for a separate `autoDetect` toggle)?
+- [ ] Should `autoDetect` be removed from the Popup entirely, making `autoRender` the single master switch?
+- [ ] Alternatively, should the Popup's `autoDetect` be renamed/repurposed to something more distinct?
+- [ ] Document the final decision and refactor accordingly.
+
+---
+
+> **End of PLAN.md — v0.2.0 Released | Phase 9 Pending**
 

@@ -41,6 +41,13 @@ const messageBus = new MARKUP_MESSAGE_BUS();
 const recentStorage = new MARKUP_STORAGE_MANAGER('markup', 'local');
 
 /**
+ * StorageManager instance for reading user settings (sync storage).
+ * Used to check autoDetect, autoRender, etc.
+ * @type {StorageManager}
+ */
+const settingsStorage = new MARKUP_STORAGE_MANAGER('markup', 'sync');
+
+/**
  * Maximum number of recent files to track.
  * @type {number}
  */
@@ -91,8 +98,22 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     return;
   }
 
-  // Dynamically inject the content script
-  console.log('MarkUp: Dynamic injection for:', tab.url);
+  // Gate: autoDetect — if disabled, skip dynamic injection (Step 9.1)
+  // Uses a Promise-based check; wrapping in an async IIFE
+  (async () => {
+    try {
+      const autoDetect = await settingsStorage.get('autoDetect');
+      if (autoDetect === false) {
+        console.log('MarkUp: Auto-detect disabled. Skipping dynamic injection for:', tab.url);
+        return;
+      }
+    } catch (err) {
+      // On error, default to injecting (fail-open)
+      console.warn('MarkUp: Failed to check autoDetect setting:', err);
+    }
+
+    // Dynamically inject the content script
+    console.log('MarkUp: Dynamic injection for:', tab.url);
 
   chrome.scripting.executeScript(
     {
@@ -155,6 +176,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
     }
   );
+  })(); // End of async autoDetect IIFE
 });
 
 /**
@@ -268,6 +290,40 @@ messageBus.listen('APPLY_FONT_FAMILY', async (payload, sender) => {
     }
   } catch (err) {
     console.log('MarkUp: Font family relay attempted.');
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_AUTO_RENDER' action — relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_AUTO_RENDER', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_AUTO_RENDER', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.log('MarkUp: Auto-render relay attempted.');
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_ENABLE_FILE_URL' action — relay to active file:// Markdown tabs.
+ */
+messageBus.listen('APPLY_ENABLE_FILE_URL', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && (tab.url || '').startsWith('file://') && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_ENABLE_FILE_URL', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.log('MarkUp: Enable file URL relay attempted.');
   }
   return { success: true };
 });

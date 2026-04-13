@@ -203,6 +203,14 @@
         console.warn('Popup: Failed to save file URL toggle:', err);
       }
     }
+    // Notify content scripts so file:// tabs respond live
+    if (messageBus) {
+      try {
+        await messageBus.send('APPLY_ENABLE_FILE_URL', { enableFileUrl: enabled });
+      } catch (err) {
+        console.log('Popup: File URL toggle notification sent.');
+      }
+    }
   }
 
   /**
@@ -217,6 +225,14 @@
         await storage.set('autoDetect', enabled);
       } catch (err) {
         console.warn('Popup: Failed to save auto-detect toggle:', err);
+      }
+    }
+    // Notify service worker so dynamic injection is updated immediately
+    if (messageBus) {
+      try {
+        await messageBus.send('APPLY_AUTO_DETECT', { autoDetect: enabled });
+      } catch (err) {
+        console.log('Popup: Auto-detect toggle notification sent.');
       }
     }
   }
