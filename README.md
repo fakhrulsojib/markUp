@@ -39,6 +39,8 @@ No apps to install, no copying into an online viewer. Just open your file.
 - 🔒 **Strict CSP Mode** — block external images and links for untrusted files
 - 📂 **Custom File Extensions** — add `.txt`, `.rst`, or any extension for detection
 - 📥 **Download Interception** — open `.md` downloads from Slack, email, etc. in a rendered tab instead of saving to disk
+- 🖼️ **Branded Favicon** — MarkUp logo displayed in the browser tab for all rendered pages
+- 🗑️ **Clear File History** — one-click clear of recent files list in the popup
 
 ---
 
