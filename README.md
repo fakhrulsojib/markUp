@@ -4,7 +4,9 @@
 
 **MarkUp** is a Chrome Extension that transforms raw `.md` and `.markdown` files into clean, styled, interactive documents. Open a Markdown file locally or on GitHub, and MarkUp does the rest.
 
-![Under Construction](https://img.shields.io/badge/status-v0.2.0-blue)
+![Version](https://img.shields.io/badge/version-v0.2.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Manifest](https://img.shields.io/badge/manifest-V3-orange)
 
 ---
 
@@ -99,4 +101,4 @@ Creates `markup-extension-v0.2.0.zip` ready for Chrome Web Store or sideloading.
 
 ## License
 
-TBD
+This project is licensed under the [MIT License](LICENSE).
