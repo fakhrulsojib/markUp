@@ -16,7 +16,7 @@
 | 6 | ✅ Done | 2026-04-12 | UI components: toolbar, TOC, search, settings, keyboard, print |
 | 7 | ✅ Done | 2026-04-12 | Popup, options page, recent files, UX polish, a11y, packaging |
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
-| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.4 done) |
+| 9 | ✅ Done | 2026-04-13 | Settings backend wiring (enabled, debugLog, extensions, cspStrict) |
 
 ---
 
@@ -32,7 +32,8 @@ Content Script Pipeline (content-script.js → MarkUpApp class):
 
 Service Worker (service-worker.js):
   importScripts → FileDetector + MessageBus + StorageManager + Logger
-  → tabs.onUpdated (dynamic injection) → MessageBus relays
+  → tabs.onUpdated (dynamic injection, gated by `enabled` setting)
+  → MessageBus relays (theme, font, extensions, cspStrict, etc.)
 
 Communication:  popup/options → MessageBus.send() → service-worker relay
                 → chrome.tabs.sendMessage() → content-script MessageBus.listen()
@@ -54,7 +55,36 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | **Private members** | Prefixed with `_` |
 | **File naming** | PascalCase matching class name (e.g., `ThemeManager.js`) |
 | **Constants** | SCREAMING_SNAKE_CASE, `Object.freeze()`-d |
+| **Logger** | `Logger.debug()` for verbose output (gated by `debugLog` setting), `Logger.warn()`/`Logger.error()` always output |
 | **Test suites** | `tests/phase{N}-browser-verify.html` — browser-runnable, mock chrome APIs |
+
+---
+
+## Settings Model (Final)
+
+| Setting | Storage Key | Default | Location | Consumer |
+|---------|-------------|---------|----------|----------|
+| Enable MarkUp | `enabled` | `true` | Popup + Options | content-script (render gate) + service-worker (injection gate) |
+| Theme | `theme` | `'light'` | Popup + Options + In-page | ThemeManager |
+| Font Size | `fontSize` | `16` | Options + In-page | CSS `--markup-font-size-base` |
+| Line Height | `lineHeight` | `1.6` | Options + In-page | CSS `--markup-line-height` |
+| Font Family | `fontFamily` | `'system-ui'` | Options + In-page | CSS `--markup-font-body` |
+| Custom Extensions | `extensions` | `'.md, .markdown, .mdown, .mkd, .mdx'` | Options | FileDetector.setCustomExtensions() |
+| Strict CSP Mode | `cspStrict` | `false` | Options | Sanitizer strict config → re-render |
+| Debug Logging | `debugLog` | `false` | Options | Logger._enabled flag |
+
+### MessageBus Actions (Settings Relay)
+
+| Action | Sender | Handler |
+|--------|--------|---------|
+| `APPLY_ENABLED` | Popup/Options | SW relay → content-script reload |
+| `APPLY_THEME` | Popup/Options/In-page | SW relay → ThemeManager.applyTheme() |
+| `APPLY_FONT_SIZE` | Options/In-page | SW relay → CSS custom property |
+| `APPLY_LINE_HEIGHT` | Options/In-page | SW relay → CSS custom property |
+| `APPLY_FONT_FAMILY` | Options/In-page | SW relay → CSS custom property |
+| `APPLY_EXTENSIONS` | Options | SW relay → FileDetector + broadcast all tabs |
+| `APPLY_CSP_STRICT` | Options | SW relay → _reRender() with new sanitizer config |
+| `APPLY_DEBUG_LOG` | Options | SW relay → Logger.setEnabled() |
 
 ---
 
@@ -64,9 +94,9 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 ### Files Created
 | File | Purpose |
 |------|---------|
-| `src/manifest.json` | MV3 manifest — permissions: `activeTab`, `storage`, `scripting` |
+| `src/manifest.json` | MV3 manifest — permissions: `activeTab`, `storage`, `scripting`, `tabs` |
 | `src/background/service-worker.js` | Skeleton with `onInstalled` + `onMessage` listeners |
-| `src/content/content-script.js` | Skeleton with `console.log` injection proof |
+| `src/content/content-script.js` | Skeleton with injection proof |
 | `src/content/content.css` | Empty placeholder |
 | `src/popup/popup.html` | Minimal placeholder (required by manifest `default_popup`) |
 | `assets/icons/icon-{16,32,48,128}.png` | Custom "M" icon, blue-to-violet gradient |
@@ -87,13 +117,12 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 |------|--------|-------------|
 | `src/utils/constants.js` | `MARKUP_CONSTANTS` | `THEMES`, `STORAGE_KEYS`, `EVENTS`, `DEFAULTS`, `MD_URL_PATTERNS`, `MD_MIME_TYPES`, `CSS_PREFIX`, `MAX_DOCUMENT_SIZE` |
 | `src/utils/dom-helpers.js` | `MARKUP_DOM_HELPERS` | `createElement()`, `createFragment()`, `removeAllChildren()`, `addStyles()` |
-| `src/utils/sanitizer.js` | `MARKUP_SANITIZER` | `Sanitizer` class — DOMParser-based, whitelist approach. Blocks `<script>`, `<iframe>`, `on*` attrs, `javascript:` URLs |
+| `src/utils/sanitizer.js` | `MARKUP_SANITIZER` | `Sanitizer` class — DOMParser-based whitelist. `createStrictConfig()` factory. Blocks `<script>`, `<iframe>`, `on*` attrs, `javascript:` URLs |
 | `src/core/EventEmitter.js` | `MARKUP_EVENT_EMITTER` | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`, `listenerCount()` |
 
 ### Key Decisions
-- **Sanitizer whitelist** broader than plan minimum — includes `dl/dt/dd`, `details/summary`, `sup/sub`, `mark`, `figure/figcaption` for extended Markdown.
+- **Sanitizer whitelist** broader than plan minimum — includes `dl/dt/dd`, `details/summary`, `sup/sub`, `mark`, `figure/figcaption`.
 - **EventEmitter** uses `Set` (not `Array`) for O(1) dedup. Spread-copy iteration in `emit()` for safe mid-emission removal.
-- All exports via `globalThis.MARKUP_*` for cross-context compatibility.
 
 ---
 
@@ -105,17 +134,16 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 |------|--------|-------------|
 | `src/core/StorageManager.js` | `MARKUP_STORAGE_MANAGER` | `get()`, `set()`, `remove()`, `getAll()` — namespaced, async, default-fallback |
 | `src/core/MessageBus.js` | `MARKUP_MESSAGE_BUS` | `send()`, `listen()`, `unlisten()`, `destroy()` — action-based routing |
-| `src/core/FileDetector.js` | `MARKUP_FILE_DETECTOR` | `isMarkdownUrl()`, `isMarkdownMime()`, `getFileNameFromUrl()` — 5 extensions (.md/.markdown/.mdown/.mkd/.mdx) |
+| `src/core/FileDetector.js` | `MARKUP_FILE_DETECTOR` | `isMarkdownUrl()`, `isMarkdownMime()`, `getFileNameFromUrl()`, `setCustomExtensions()` — 5 built-in extensions (.md/.markdown/.mdown/.mkd/.mdx) |
 
-### Service Worker Wiring (Step 3.4)
-- `importScripts()` loads constants, FileDetector, MessageBus.
+### Service Worker Wiring
+- `importScripts()` loads constants, FileDetector, MessageBus, StorageManager, Logger.
 - `chrome.tabs.onUpdated` → dynamic injection for URLs not in static `content_scripts` matches.
 - `injectedTabs` Set tracks already-injected tabs. Cleaned on `tabs.onRemoved`.
-- `ping` → `pong` handler for connectivity testing.
 
-### Key Decisions & Deviations
-- ⚠️ **Added `"tabs"` permission** to manifest — not in original plan but required for `chrome.tabs.onUpdated`.
-- `StorageManager.get()` resolves with default on error (never rejects) — UI always has a usable value.
+### Key Decisions
+- ⚠️ **Added `"tabs"` permission** to manifest — required for `chrome.tabs.onUpdated`.
+- `StorageManager.get()` resolves with default on error (never rejects).
 - `MessageBus._onMessage` returns `false` for unknown actions — does not consume messages meant for other listeners.
 
 ---
@@ -135,14 +163,13 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | `src/core/SyntaxHighlighter.js` | `MARKUP_SYNTAX_HIGHLIGHTER` | `highlightAll()`, `highlightElement()` wrapping hljs |
 | `src/core/TocGenerator.js` | `MARKUP_TOC_GENERATOR` | Heading extraction, slug generation, stack-based tree building |
 
-### Content Script Pipeline (Step 4.7)
-Rewrote `content-script.js` as full orchestrator in IIFE with double-execution guard (`window.__MARKUP_INITIALIZED__`):
+### Content Script Pipeline
 1. Detect raw Markdown page (`contentType` + `<pre>` check)
 2. Extract raw text
 3. Parse → HTML (MarkdownParser)
 4. Render → safe DOM (HtmlRenderer + Sanitizer)
 5. Highlight code blocks (SyntaxHighlighter)
-6. Generate TOC data → `window.__MARKUP_TOC_DATA__`
+6. Generate TOC data
 7. Set page title from first `<h1>` or filename
 
 ### Key Decisions
@@ -176,7 +203,6 @@ Rewrote `content-script.js` as full orchestrator in IIFE with double-execution g
 - Theme selectors: `.markup-content.markup-theme-{name}` (compound class for specificity).
 - `_runPipeline()` changed from sync → async (needed for `StorageManager.get()` in ThemeManager init).
 - System font stacks used — zero bundled font overhead.
-- Print: `!important` on critical overrides (standard print practice).
 
 ---
 
@@ -196,14 +222,10 @@ Rewrote `content-script.js` as full orchestrator in IIFE with double-execution g
 | `src/core/KeyboardManager.js` | `MARKUP_KEYBOARD_MANAGER` | Combo normalization, capture-phase listener, skips input/textarea |
 | `src/styles/ui-components.css` | — | Toolbar glassmorphism, sidebars, search bar, highlights |
 
-### Content Script Orchestrator (Step 6.9)
-Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
-
-### Key Decisions & Deviations
-- ⚠️ **`StorageManager.js` was missing from static `content_scripts.js`** since Phase 3 — fixed as bugfix.
+### Key Decisions
 - UI components mount to `document.body` (fixed-position chrome above content).
 - All buttons emit events via EventEmitter — no direct cross-component calls.
-- Keyboard shortcuts: `Ctrl+Shift+T` (TOC), `Ctrl+Shift+F` (search), `Ctrl+Shift+D` (theme), `Ctrl+P` (print).
+- Keyboard shortcuts: `Alt+T` (TOC), `Alt+F` (search), `Alt+D` (theme), `Alt+P` (print).
 
 ---
 
@@ -224,11 +246,11 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | `tests/test-files/large-document.md` | 500+ lines, 13 sections, 8 languages |
 | `tests/test-checklist.md` | 80+ item manual QA checklist |
 
-### UX Polish (Step 7.4)
+### UX Polish
 - Loading spinner (3-dot bounce) for files >50KB.
 - Raw/rendered toggle button (bottom-left, `aria-pressed`).
 
-### Edge Cases (Step 7.6)
+### Edge Cases
 - Empty file → styled "empty" card.
 - Binary file → detection via null-byte check + non-printable ratio → warning card.
 - Large file (>1MB) → sticky warning bar, render first 500 lines, "Load All" button.
@@ -236,120 +258,68 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 ### Key Decisions
 - Popup sends `APPLY_THEME` via MessageBus → service worker relays to content scripts.
 - Recent files: `chrome.storage.local` (not sync — sync has 100KB quota). Capped at 10 FIFO.
-- Options range sliders: `input` for live display, `change` for persistence.
 
 ---
 
 ## Phase 8 — UI Refinements & Live Settings
-**Steps 8.1–8.4 · All Completed**
+**Steps 8.1–8.3 · All Completed**
 
-### What Changed
 | Area | Change |
 |------|--------|
-| **Theme-aware UI (8.1)** | Added `body.markup-body` CSS variables + theme overrides. ThemeManager toggles classes on both `.markup-content` and `body`. Toolbar uses `var(--markup-bg-primary)` instead of hardcoded rgba. |
-| **Draggable toolbar (8.2)** | 6th button (drag handle `⠿`). PointerEvents API with `setPointerCapture()`. Position persisted to StorageManager. Viewport clamping. |
-| **Live settings relay (8.3)** | Service worker relays: `APPLY_THEME`, `APPLY_FONT_SIZE`, `APPLY_LINE_HEIGHT`, `APPLY_FONT_FAMILY`. Content script `MessageBus.listen()` handlers apply CSS custom properties immediately. |
+| **Theme-aware UI (8.1)** | `body.markup-body` CSS variables + theme overrides. ThemeManager toggles classes on both `.markup-content` and `body`. |
+| **Draggable toolbar (8.2)** | 6th button (drag handle `⠿`). PointerEvents API with `setPointerCapture()`. Position persisted. Viewport clamping. |
+| **Live settings relay (8.3)** | Service worker relays: `APPLY_THEME`, `APPLY_FONT_SIZE`, `APPLY_LINE_HEIGHT`, `APPLY_FONT_FAMILY`. Content script applies CSS custom properties immediately. |
 
 ### Key Decisions
-- UI elements are `body` children, not inside `.markup-content` — CSS variables duplicated at `body.markup-body` level for inheritance.
+- UI elements are `body` children, not inside `.markup-content` — CSS variables duplicated at `body.markup-body` level.
 - PointerEvents over MouseEvents for touch compatibility.
-- `APPLY_FONT_FAMILY` handler removes `--markup-font-body` property for `system-ui` (uses variables.css default).
-- Phase 6 toolbar button count assertion changed from `=== 5` to `>= 5` for forward compat.
 
 ---
 
 ## Phase 9 — Settings Backend Wiring
-**Steps 9.1–9.2 Completed · Steps 9.3–9.6 Pending**
+**Steps 9.1–9.6 · All Completed**
 
-### Step 9.1 — `autoRender`, `autoDetect`, `enableFileUrl` ✅ (⚠️ `enableFileUrl` later removed)
+### Step 9.1 — `enabled` Master Toggle ✅
 
-**Files Modified:**
-- `src/utils/constants.js` — Added `DEFAULTS.AUTORENDER`, `AUTODETECT`, `ENABLEFILEURL` (all default `true`). *(`ENABLEFILEURL` later removed.)*
-- `src/content/content-script.js` — `autoRender` and `enableFileUrl` gates in `run()`. Info banners with "Enable" buttons. `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` listeners (trigger reload). *(`enableFileUrl` gate and banner later removed.)*
-- `src/background/service-worker.js` — `autoDetect` gate wrapping dynamic injection (async IIFE). `APPLY_AUTO_RENDER` and `APPLY_ENABLE_FILE_URL` relay handlers. `settingsStorage` instance added. *(`APPLY_ENABLE_FILE_URL` relay later removed.)*
-- `src/options/options.js` — `APPLY_AUTO_RENDER` notification on toggle.
-- `src/popup/popup.js` — `APPLY_ENABLE_FILE_URL` and `APPLY_AUTO_DETECT` notifications on toggles. *(`APPLY_ENABLE_FILE_URL` later removed.)*
-
-**Key Decisions:**
+- Content script: `enabled` gate at start of `run()`. Info banner with "Enable" button when disabled.
+- Service worker: `enabled` gate wrapping dynamic injection in async IIFE.
 - Gates use `=== false` — `undefined` treated as enabled (backward compat).
 - `earlyStorage` created at top of `run()` for settings checks — separate from `this._storage`.
-- Banners prepend to body (don't clear raw content).
-- `autoDetect` gate wraps dynamic injection in async IIFE (tabs.onUpdated doesn't support async callbacks).
-
-- **9.5:** `cspStrict` → restrictive Sanitizer config
-- **9.6:** Tests & documentation
-
----
-
-### Step 9.3 — Unify & Simplify Settings ✅
-
-> Consolidated `autoDetect` + `autoRender` into a single `enabled` master toggle. Both popup and options now use identical labels and storage keys.
-
-**Files Modified:**
-- `src/utils/constants.js` — Removed `DEFAULTS.AUTORENDER` and `DEFAULTS.AUTODETECT`, added `DEFAULTS.ENABLED: true`.
-- `src/popup/popup.html` — Renamed "Auto-detect .md files" → "Enable MarkUp", `id` changed to `markup-toggle-enabled`.
-- `src/popup/popup.js` — Storage key `autoDetect` → `enabled`, message `APPLY_AUTO_DETECT` → `APPLY_ENABLED`.
-- `src/options/options.html` — Renamed "Auto-render Markdown files" → "Enable MarkUp". *("Enable on file:// URLs" toggle was briefly added, then removed.)*
-- `src/options/options.js` — Storage key `autoRender` → `enabled`, message `APPLY_AUTO_RENDER` → `APPLY_ENABLED`. *(`enableFileUrl` toggle wiring later removed.)*
-- `src/content/content-script.js` — Gate `autoRender` → `enabled`, listener `APPLY_AUTO_RENDER` → `APPLY_ENABLED`, banner text updated.
-- `src/background/service-worker.js` — Gate `autoDetect` → `enabled`, listener `APPLY_AUTO_RENDER` → `APPLY_ENABLED`.
-- `tests/phase9-step91-browser-verify.html` — Updated 21 assertions to match new storage keys and message actions.
-
-**Bug Fixed:**
-- `APPLY_AUTO_DETECT` was sent by popup.js but had **no listener** in service-worker.js — the message went into the void. The consolidated `APPLY_ENABLED` now has a proper relay.
-
-**Key Decisions:**
-- `enabled` replaces both `autoDetect` and `autoRender` — single toggle controls both dynamic injection and rendering.
-- No migration script needed (pre-release, orphaned keys acceptable).
-- In-page SettingsPanel does NOT get an Enable/Disable toggle (popup + options sufficient).
-- ~~`enableFileUrl` stays as a separate toggle~~ — **Removed:** global `enabled` toggle is sufficient; no separate file:// gate needed.
-
----
 
 ### Step 9.2 — `debugLog` → Logger Utility ✅
 
-**Files Created:**
-- `src/utils/logger.js` — Static `Logger` class (`MARKUP_LOGGER`): `debug()`, `warn()`, `error()`, `init()`, `setEnabled()`. Gates `debug()` behind cached `_enabled` flag. Output: `[MarkUp:Context] message`.
-
-**Files Modified:**
-- `src/utils/constants.js` — Added `DEFAULTS.DEBUGLOG: false`.
-- `src/manifest.json` — Added `utils/logger.js` to `content_scripts.js` array.
-- `src/content/content-script.js` — Replaced 10 `console.log()` → `_Logger.debug()`. Added `Logger.init()` early in `run()`. Added `APPLY_DEBUG_LOG` early bus listener.
-- `src/background/service-worker.js` — Added `logger.js` to `importScripts()` + dynamic injection list. Replaced 11 `console.log()` → `MARKUP_LOGGER.debug()`. Added `APPLY_DEBUG_LOG` relay handler.
-- `src/options/options.js` — Added `APPLY_DEBUG_LOG` notification on debug toggle change. Replaced 1 `console.log()`.
-- `src/options/options.html` — Added `logger.js` script tag.
-- `src/popup/popup.js` — Replaced 4 `console.log()` → `Logger.debug()`. Added `Logger.init()`.
-- `src/popup/popup.html` — Added `logger.js` script tag.
-- `src/core/ThemeManager.js` — Replaced 1 `console.log()` → `Logger.debug()`.
-- `src/ui/ToolbarComponent.js` — Replaced 1 `console.log()` → `Logger.debug()`.
-
-**Key Decisions:**
-- Static class (not instance-based) — Logger is a global singleton.
-- `_enabled` defaults to `false` — debug logs are OFF by default.
-- `warn()` and `error()` always output regardless of toggle.
+- Created `src/utils/logger.js` — static `Logger` class (`MARKUP_LOGGER`).
+- `debug()` gated behind cached `_enabled` flag. `warn()`/`error()` always output.
+- Output format: `[MarkUp:Context] message`.
+- 28 `console.log()` calls converted across all modules.
 - `APPLY_DEBUG_LOG` wired as early bus listener (works even when pipeline short-circuits).
-- 28 total `console.log()` calls converted; all `console.warn()`/`console.error()` preserved.
 
----
+### Step 9.3 — Unified Settings ✅
 
-### Step 9.4 — Custom File Extensions (`extensions`) ✅
+- Consolidated `autoDetect` + `autoRender` into single `enabled` toggle.
+- Removed `enableFileUrl` toggle entirely — global `enabled` is sufficient.
+- Fixed bug: `APPLY_AUTO_DETECT` had no service worker listener → consolidated `APPLY_ENABLED` now has proper relay.
 
-> Wired the Options page "File Extensions" setting into `FileDetector` via a new `setCustomExtensions()` method. Custom extensions are merged with (never replace) built-in defaults. Options UI split into readonly defaults + editable custom input with Chrome limitation tooltip.
+### Step 9.4 — Custom File Extensions ✅
 
-**Files Modified:**
-- `src/utils/constants.js` — Added `DEFAULTS.EXTENSIONS: '.md, .markdown, .mdown, .mkd, .mdx'`.
-- `src/core/FileDetector.js` — Added `_builtInPatterns` (frozen at construction) + `setCustomExtensions(extensionsString)` method. Parses comma-separated string, escapes regex special chars, deduplicates against built-in, merges.
-- `src/background/service-worker.js` — Added startup async IIFE to load custom extensions from `settingsStorage` into `fileDetector`. Added `APPLY_EXTENSIONS` relay handler (broadcasts to ALL tabs, not filtered — new extensions may match previously-unmatched tabs).
-- `src/options/options.html` — Split extensions UI: readonly `#markup-opt-extensions-builtin` field (`.md, .markdown, .mdown, .mkd, .mdx`) + editable `#markup-opt-extensions` input for custom extensions + `<p class="markup-options-help">` tooltip explaining Chrome static match limitation.
-- `src/options/options.js` — Added `APPLY_EXTENSIONS` notification in `_wireBehaviorControls()`. Reset now clears custom extensions to empty string (built-in always preserved).
-- `src/options/options.css` — Added `.markup-options-readonly` (dimmed, cursor not-allowed) and `.markup-options-help` + `.markup-options-help code` styles.
+- `FileDetector.setCustomExtensions(extensionsString)` — merges with built-in, never replaces.
+- `_builtInPatterns` stored separately and frozen at construction.
+- Options UI split: readonly built-in + editable custom input + Chrome limitation tooltip.
+- Regex injection prevented via special character escaping.
+- `APPLY_EXTENSIONS` broadcasts to ALL tabs (new extensions may match previously-unmatched URLs).
+- Service worker startup IIFE re-reads `extensions` from storage (restart safety).
 
-**Key Decisions:**
-- **Merge, never replace** — `_builtInPatterns` stored separately at construction. `setCustomExtensions('')` resets to built-in only. User cannot break core `.md` detection.
-- **APPLY_EXTENSIONS relay broadcasts to all tabs** (not filtered by `isMarkdownUrl()`) — a `.txt` tab wouldn't match old patterns but needs to be reachable after patterns expand.
-- **Options UI split per user feedback** — built-in extensions shown in readonly field; custom extensions in separate editable field. Prevents accidental removal of defaults.
-- **Regex injection prevented** — special characters escaped via `ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
-- **Service worker restart safety** — startup IIFE re-reads `extensions` from storage.
+### Step 9.5 — `cspStrict` → Strict Sanitizer Mode ✅
+
+- `Sanitizer.createStrictConfig()` — strips `<img>`, blocks external `<a href>` (only `#anchor` preserved), blocks `data:` URLs.
+- `_reRender()` method re-runs parse→render→highlight→TOC pipeline using stored `_rawMarkdown`.
+- Default is `false` (relaxed) — avoids breaking images/links on install.
+- `APPLY_CSP_STRICT` relay broadcasts to all Markdown tabs.
+
+### Step 9.6 — Tests & Documentation ✅
+
+- 5 per-step test suites totaling 345 tests, all passing.
+- All prior suites (Phase 2–8) pass with zero regressions.
 
 ---
 
@@ -368,6 +338,7 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | Phase 9.2 | `tests/phase9-step92-browser-verify.html` | 58 tests |
 | Phase 9.3 | `tests/phase9-step93-browser-verify.html` | 54 tests |
 | Phase 9.4 | `tests/phase9-step94-browser-verify.html` | 42 tests |
+| Phase 9.5 | `tests/phase9-step95-browser-verify.html` | 60 tests |
 
 ---
 
@@ -382,10 +353,11 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | `_runPipeline()` is async (was sync in plan) | Needed for `StorageManager.get()` which returns Promise |
 | `StorageManager.js` added to static content_scripts | Was missing since Phase 3 — fixed in Phase 6 as bugfix |
 | Toolbar has 6 buttons (plan said 5) | Drag handle added in Phase 8 |
-| `autoDetect` + `autoRender` merged into `enabled` | Phase 9.3: eliminated dead combos and semantic overlap |
-| `enableFileUrl` toggle removed entirely | Global `enabled` toggle is sufficient; no separate file:// gate needed |
-| Extensions UI split into readonly + editable fields | User feedback: prevent accidental removal of built-in defaults |
+| `autoDetect` + `autoRender` merged into `enabled` | Eliminated dead combos and semantic overlap |
+| `enableFileUrl` toggle removed entirely | Global `enabled` toggle is sufficient |
+| Extensions UI split into readonly + editable fields | Prevents accidental removal of built-in defaults |
+| `CSPSTRICT` default is `false` (plan said `true`) | Relaxed mode avoids breaking images/links on install |
 
 ---
 
-> **For future agents:** Always check this file's "Known Deviations" section and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their original Phase 1 skeletons.
+> **For future agents:** Always check this file's "Known Deviations" section, the "Settings Model" table, and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their Phase 1 skeletons.

@@ -45,7 +45,7 @@
 - [ ] Tables have striped rows and header background
 - [ ] Code blocks have proper background and borders
 - [ ] Typography: headings are visually distinct hierarchy
-- [ ] Print preview (Ctrl+P): clean layout, no UI chrome
+- [ ] Print preview (Alt+P): clean layout, no UI chrome
 
 ## Phase 6: UI Components
 
@@ -84,10 +84,10 @@
 - [ ] After print dialog closes, UI restores
 
 ### Keyboard Shortcuts
-- [ ] `Ctrl+Shift+T` → Toggle TOC
-- [ ] `Ctrl+Shift+F` → Toggle Search
-- [ ] `Ctrl+Shift+D` → Cycle Theme
-- [ ] `Ctrl+P` → Print (MarkUp formatted)
+- [ ] `Alt+T` → Toggle TOC
+- [ ] `Alt+F` → Toggle Search
+- [ ] `Alt+D` → Cycle Theme
+- [ ] `Alt+P` → Print (MarkUp formatted)
 - [ ] Shortcuts don't fire when typing in search input
 
 ## Phase 7: Popup, Options & Polish
@@ -158,4 +158,4 @@
 
 ---
 
-*Last updated: Phase 7 completion*
+*Last updated: Phase 9 completion*
