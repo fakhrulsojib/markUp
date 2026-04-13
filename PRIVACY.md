@@ -70,8 +70,8 @@ If this policy changes, the updated version will be published here with a new "L
 
 ## Contact
 
-If you have questions about this privacy policy, please open an issue on the [GitHub repository](https://github.com/fakhrulsojib/markUp).
+If you have questions about this privacy policy, please contact us at **fakhrulsojib@gmail.com**.
 
 ---
 
-*MarkUp is open source under the [MIT License](LICENSE).*
+*MarkUp is licensed under the MIT License.*
