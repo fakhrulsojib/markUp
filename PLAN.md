@@ -754,14 +754,119 @@ classDiagram
 
 ---
 
-## 8. Future Roadmap (Potential Phases)
+## 8. Future Roadmap
 
-- **Phase 10:** Mermaid diagram rendering in fenced code blocks
-- **Phase 11:** Math/LaTeX rendering (KaTeX)
-- **Phase 12:** Custom CSS injection (user-provided stylesheets)
-- **Phase 13:** Multi-file wiki navigation (relative link following)
-- **Phase 14:** Chrome Web Store publication & auto-update
+### Phase 10: Download Interception — Render Instead of Download 🔲
+
+> **Context:** When Markdown files are shared in Google Chat, Slack, email, or any web app, clicking them triggers a download (`Content-Disposition: attachment`). The browser never navigates to a renderable page, so MarkUp's content script never runs. This phase intercepts `.md` downloads globally, cancels them, and renders the content in a new tab using the existing pipeline.
+
+#### Step 10.1 — Add `downloads` Permission & Setting
+
+- Add `"downloads"` to `manifest.json` `permissions` array.
+- Add a new setting to the Settings Model:
+
+| Setting | Storage Key | Default | Location | Consumer |
+|---------|-------------|---------|----------|----------|
+| Render downloads | `interceptDownloads` | `true` | Options → Behavior | service-worker download listener |
+
+- Add toggle to Options page (Behavior section) and also in Popup: "Render Markdown downloads instead of saving"
+  - Help text: "When you click a `.md` file link that would normally download, MarkUp opens it in a new tab instead."
+- Add `APPLY_INTERCEPT_DOWNLOADS` MessageBus action for live toggle.
+- Wire setting in `constants.js`: `DEFAULTS.INTERCEPT_DOWNLOADS: true`.
+
+> ✅ **Verify:** New permission loads without errors. Toggle appears in Options and Popup. Setting persists.
+
+#### Step 10.2 — Implement Download Listener in Service Worker
+
+- In `service-worker.js`, add `chrome.downloads.onDeterminingFilename` listener:
+  1. Check if the download filename ends with a known Markdown extension (use `FileDetector` patterns).
+  2. Read `interceptDownloads` setting from `StorageManager` — if `false`, allow normal download.
+  3. If match: cancel the download via `chrome.downloads.cancel(downloadId)`.
+  4. Store the download URL and filename temporarily.
+  5. Fetch the file content:
+     - **Primary:** Use `fetch(downloadUrl)` from the service worker — cookies auto-attached for same-origin.
+     - **Fallback:** If CORS/auth fails, use `chrome.tabs.create()` with the URL and let the content script handle detection.
+  6. Create a renderable page:
+     - **Option A (preferred):** Open `chrome.runtime.getURL('viewer.html') + '?url=' + encodeURIComponent(downloadUrl)` — a dedicated viewer page inside the extension that fetches and renders.
+     - **Option B (fallback):** Create a `blob:` URL with `text/plain` MIME type → open in new tab → existing content script detects and renders.
+
+```
+User clicks .md attachment in Google Chat / Slack / Drive / Email
+  → Browser starts download
+  → chrome.downloads.onDeterminingFilename fires
+  → FileDetector.isMarkdownFilename(suggestedFilename) → true
+  → chrome.downloads.cancel(downloadId)
+  → Fetch file content from download URL
+  → Open in viewer.html or blob: tab
+  → Existing MarkUp rendering pipeline runs
+```
+
+> ✅ **Verify:** Share a `.md` file in Google Chat → click it → instead of downloading, a new tab opens with rendered Markdown. Toggle setting OFF → file downloads normally.
+
+#### Step 10.3 — Create `viewer.html` Extension Page
+
+- Create `src/viewer/viewer.html`:
+  - Minimal page that reads `?url=` query parameter.
+  - Fetches the Markdown content via `fetch()` (extension pages have relaxed CORS).
+  - Injects the raw Markdown into the page as a `<pre>` element.
+  - Loads the content script pipeline (or duplicates the parse/render logic for extension context).
+- Create `src/viewer/viewer.js`:
+  - Parse URL params, fetch content, handle auth failures gracefully.
+  - Show loading spinner during fetch.
+  - On fetch failure: show error card with "Download instead" button that triggers `chrome.downloads.download({ url })`.
+- Create `src/viewer/viewer.css`:
+  - Reuses existing design tokens and theme system.
+- Update `manifest.json`:
+  - Ensure viewer page has access to all CSS/JS resources via `web_accessible_resources` if needed.
+
+> ✅ **Verify:** Navigate to `chrome-extension://<id>/viewer/viewer.html?url=<markdown-file-url>` → content loads and renders. Viewer respects current theme and typography settings.
+
+#### Step 10.4 — Handle Edge Cases & Auth Failures
+
+- **Expired/auth-gated URLs:** Google Chat download URLs expire. If `fetch()` returns 401/403:
+  - Show error: "This file requires authentication. [Download instead] [Try again]"
+  - "Download instead" triggers `chrome.downloads.download({ url })` to fall back to normal behavior.
+- **Large files:** Apply same >1MB warning as existing pipeline.
+- **Non-Markdown false positives:** If fetched content looks binary (null bytes, non-printable ratio), cancel rendering and resume download.
+- **User wants to download:** Add a "Save file" button to the rendered view (uses `chrome.downloads.download()`).
+- **Race condition:** `onDeterminingFilename` fires synchronously — ensure download is canceled before the file starts writing to disk.
+
+> ✅ **Verify:** Test with expired Google Chat link → error with download fallback. Test with binary `.md` file → normal download. Test "Save file" button → downloads the rendered file.
+
+#### Step 10.5 — Popup Integration
+
+- Add indicator to popup when a download was intercepted:
+  - Show a subtle notification: "Rendered `notes.md` instead of downloading"
+  - Add intercepted files to the existing "Recent Files" list.
+- Add quick toggle in popup: "Render downloads" (mirrors Options setting).
+
+> ✅ **Verify:** Intercept a download → popup shows notification. Toggle OFF in popup → next download saves normally.
+
+#### Step 10.6 — Tests & Documentation
+
+- Create `tests/phase10-browser-verify.html`:
+  - Mock `chrome.downloads` API.
+  - Test filename detection (`.md`, `.markdown`, `.mdown` etc.).
+  - Test cancel + fetch + render flow.
+  - Test setting toggle (ON/OFF).
+  - Test auth failure fallback.
+  - Test non-Markdown rejection.
+- Update `AGENTS.md` with Phase 10 entry.
+- Update `README.md` with download interception feature.
+
+> ✅ **Verify:** All tests pass. All prior suites (Phase 2–9) pass with zero regressions.
 
 ---
 
-> **End of PLAN.md — v0.2.0 | All Phases (1–9) Complete**
+### Future Phases (Pipeline)
+
+- **Phase 11:** Mermaid diagram rendering in fenced code blocks
+- **Phase 12:** Math/LaTeX rendering (KaTeX)
+- **Phase 13:** Custom CSS injection (user-provided stylesheets)
+- **Phase 14:** Multi-file wiki navigation (relative link following)
+- **Phase 15:** Chrome Web Store publication & auto-update
+
+---
+
+> **End of PLAN.md — v0.2.0 | Phases 1–9 Complete | Phase 10 Planned**
+
