@@ -44,12 +44,20 @@
     const MessageBusClass = (typeof MARKUP_MESSAGE_BUS !== 'undefined')
       ? MARKUP_MESSAGE_BUS
       : null;
+    const LoggerClass = (typeof MARKUP_LOGGER !== 'undefined')
+      ? MARKUP_LOGGER
+      : null;
 
     if (StorageManagerClass) {
       storage = new StorageManagerClass();
     }
     if (MessageBusClass) {
       messageBus = new MessageBusClass();
+    }
+
+    // Initialize Logger
+    if (LoggerClass) {
+      await LoggerClass.init();
     }
 
     // Load all current settings
@@ -175,6 +183,7 @@
 
     _wireToggle('markup-opt-debug', async (checked) => {
       await _saveSetting('debugLog', checked);
+      await _notifyContentScript('APPLY_DEBUG_LOG', { debugLog: checked });
     });
   }
 
@@ -247,7 +256,10 @@
       await messageBus.send(action, payload);
     } catch (err) {
       // Content script may not be listening — that's OK
-      console.log(`Options: Notification ${action} sent.`);
+      const LoggerRef = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+      if (LoggerRef) {
+        LoggerRef.debug('Options', `Notification ${action} sent.`);
+      }
     }
   }
 

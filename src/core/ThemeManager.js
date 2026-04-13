@@ -147,7 +147,8 @@ class ThemeManager {
       }
     }
 
-    console.log(`ThemeManager: Applied theme "${themeName}"`);
+    const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+    if (_Log) { _Log.debug('ThemeManager', `Applied theme "${themeName}"`); }
   }
 
   /**

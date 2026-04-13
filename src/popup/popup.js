@@ -55,6 +55,12 @@
       messageBus = new MessageBusClass();
     }
 
+    // Initialize Logger
+    const LoggerClass = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+    if (LoggerClass) {
+      await LoggerClass.init();
+    }
+
     // Load and display current state
     await _loadThemeState();
     await _loadToggleStates();
@@ -141,7 +147,8 @@
         await messageBus.send('APPLY_THEME', { theme: themeName });
       } catch (err) {
         // Content script may not be active — that's OK
-        console.log('Popup: Theme change notification sent (content script may not be active).');
+        const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+        if (_Log) { _Log.debug('Popup', 'Theme change notification sent (content script may not be active).'); }
       }
     }
   }
@@ -208,7 +215,8 @@
       try {
         await messageBus.send('APPLY_ENABLE_FILE_URL', { enableFileUrl: enabled });
       } catch (err) {
-        console.log('Popup: File URL toggle notification sent.');
+        const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+        if (_Log) { _Log.debug('Popup', 'File URL toggle notification sent.'); }
       }
     }
   }
@@ -232,7 +240,8 @@
       try {
         await messageBus.send('APPLY_AUTO_DETECT', { autoDetect: enabled });
       } catch (err) {
-        console.log('Popup: Auto-detect toggle notification sent.');
+        const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+        if (_Log) { _Log.debug('Popup', 'Auto-detect toggle notification sent.'); }
       }
     }
   }
@@ -253,7 +262,8 @@
       }
     } catch (err) {
       // Service worker may not have the handler yet — show empty state
-      console.log('Popup: Could not load recent files:', err.message);
+      const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+      if (_Log) { _Log.debug('Popup', 'Could not load recent files:', err.message); }
     }
   }
 

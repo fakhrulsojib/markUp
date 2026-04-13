@@ -30,7 +30,9 @@
   }
   window.__MARKUP_INITIALIZED__ = true;
 
-  console.log('MarkUp content script loaded on:', window.location.href);
+  // Resolve Logger reference — may not be available if loaded before logger.js
+  const _Logger = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+  if (_Logger) { _Logger.debug('ContentScript', 'Content script loaded on:', window.location.href); }
 
   // --- Constants ---
 
@@ -285,9 +287,14 @@
      * Run the full MarkUp pipeline.
      */
     async run() {
+      // Initialize Logger early (before any debug output)
+      if (_Logger) {
+        await _Logger.init();
+      }
+
       // Step 1: Detect raw Markdown content
       if (!_isRawMarkdownPage()) {
-        console.log('MarkUp: Page does not contain raw Markdown. Skipping.');
+        if (_Logger) { _Logger.debug('ContentScript', 'Page does not contain raw Markdown. Skipping.'); }
         return;
       }
 
@@ -329,6 +336,13 @@
             }
             return { success: true };
           });
+          // APPLY_DEBUG_LOG — update Logger live (works even when pipeline short-circuits)
+          earlyBus.listen('APPLY_DEBUG_LOG', (payload) => {
+            if (_Logger && payload) {
+              _Logger.setEnabled(payload.debugLog === true);
+            }
+            return { success: true };
+          });
         } catch (err) {
           console.warn('MarkUp: Failed to wire early MessageBus listeners:', err);
         }
@@ -339,7 +353,7 @@
         try {
           const enableFileUrl = await earlyStorage.get('enableFileUrl');
           if (enableFileUrl === false) {
-            console.log('MarkUp: Rendering disabled for file:// URLs.');
+            if (_Logger) { _Logger.debug('ContentScript', 'Rendering disabled for file:// URLs.'); }
             this._showFileUrlDisabledBanner(rawMarkdown);
             return;
           }
@@ -353,7 +367,7 @@
         try {
           const autoRender = await earlyStorage.get('autoRender');
           if (autoRender === false) {
-            console.log('MarkUp: Auto-rendering is disabled.');
+            if (_Logger) { _Logger.debug('ContentScript', 'Auto-rendering is disabled.'); }
             this._showDisabledBanner(rawMarkdown);
             return;
           }
@@ -377,7 +391,7 @@
         this._totalLineCount = lines.length;
       }
 
-      console.log(`MarkUp: Detected Markdown content (${rawMarkdown.length} chars). Rendering...`);
+      if (_Logger) { _Logger.debug('ContentScript', `Detected Markdown content (${rawMarkdown.length} chars). Rendering...`); }
 
       // Show loading spinner for large files
       if (rawMarkdown.length > 50000) {
@@ -435,7 +449,7 @@
         // Step 15: Track as recent file
         this._trackRecentFile();
 
-        console.log('MarkUp: Rendering complete.');
+        if (_Logger) { _Logger.debug('ContentScript', 'Rendering complete.'); }
 
       } catch (error) {
         this._removeLoadingSpinner();
@@ -530,7 +544,7 @@
       if (SyntaxHighlighterClass) {
         const highlighter = new SyntaxHighlighterClass({ autoDetect: true });
         const count = highlighter.highlightAll(container);
-        console.log(`MarkUp: Syntax highlighted ${count} code block(s).`);
+        if (_Logger) { _Logger.debug('ContentScript', `Syntax highlighted ${count} code block(s).`); }
       } else {
         console.warn('MarkUp: SyntaxHighlighter not available. Code blocks will not be highlighted.');
       }
@@ -547,7 +561,7 @@
       if (TocGeneratorClass) {
         const tocGenerator = new TocGeneratorClass();
         const headings = tocGenerator.generate(container);
-        console.log(`MarkUp: Generated TOC with ${headings.length} heading(s).`);
+        if (_Logger) { _Logger.debug('ContentScript', `Generated TOC with ${headings.length} heading(s).`); }
 
         this._tocData = {
           headings: headings,
@@ -572,7 +586,7 @@
         try {
           this._themeManager = new ThemeManagerClass(this._storage, this._emitter);
           await this._themeManager.init();
-          console.log(`MarkUp: Theme applied: ${this._themeManager.getTheme()}`);
+          if (_Logger) { _Logger.debug('ContentScript', `Theme applied: ${this._themeManager.getTheme()}`); }
         } catch (err) {
           console.warn('MarkUp: Theme initialization failed:', err);
         }
@@ -864,7 +878,7 @@
           });
         }
       } catch (err) {
-        console.log('MarkUp: Recent file tracking skipped.');
+        if (_Logger) { _Logger.debug('ContentScript', 'Recent file tracking skipped.'); }
       }
     }
 

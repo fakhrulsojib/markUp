@@ -1065,7 +1065,35 @@ classDiagram
 
 > ✅ **Verify:** With debug logging OFF (default): open a `.md` file → no console output except warnings/errors. Enable debug logging → refresh → verbose pipeline logs visible (e.g., "MarkUp: Parsing 1234 chars", "MarkUp: Rendering complete in 42ms", "MarkUp: Theme applied: dark").
 
-#### Step 9.3 — Wire `extensions` (Custom File Extensions)
+#### Step 9.3 — Unify & Simplify Settings: Resolve `autoDetect` / `autoRender` / `extensions` Overlap
+
+> ⚠️ **Context:** During Step 9.1 implementation, a semantic overlap was identified between three settings that control related but confusingly similar behavior. The popup and options page use different names for related concepts, creating a confusing mental model.
+
+**Current state (problematic):**
+
+| Setting | Location | What it does | Storage key |
+|---------|----------|-------------|-------------|
+| `Auto-detect .md files` | Popup | Gates dynamic injection in service worker | `autoDetect` |
+| `Auto-render Markdown files` | Options → Behavior | Gates content script rendering pipeline | `autoRender` |
+| `Enable on file:// URLs` | Popup | Gates rendering on file:// protocol | `enableFileUrl` |
+| `File Extensions` | Options → Behavior | Customizes which extensions trigger detection | `extensions` |
+
+**Problems:**
+1. `autoDetect` and `autoRender` sound like the same thing to a user but control different phases.
+2. If `autoRender` is OFF, `autoDetect` still injects scripts that do nothing (wasted work).
+3. `autoDetect` and `extensions` are both detection-phase controls but live in different UIs.
+4. Popup and Options page don't share terminology — a user toggling things in both places gets confused.
+
+**Goal of this step:** Re-evaluate these settings and refactor so that:
+- [ ] The **popup** and **options page** use the **same setting names** for the same toggles — no setting should exist in only one place with a different name elsewhere.
+- [ ] Each toggle has a **single, clear meaning** — no two toggles that essentially do the same thing.
+- [ ] Eliminate dead combinations (e.g., `autoRender=OFF` + `autoDetect=ON` = wasted injection).
+- [ ] Both UIs stay in sync — changing a toggle in popup reflects in options and vice versa.
+- [ ] Document the final consolidated settings model clearly.
+
+> ✅ **Verify:** Open popup and options page side by side — every toggle that appears in both uses the exact same label and controls the exact same storage key. No ambiguous or redundant toggles remain.
+
+#### Step 9.4 — Wire `extensions` (Custom File Extensions)
 
 - In `service-worker.js`:
   - On startup and on `APPLY_EXTENSIONS` message, read the `extensions` string from `StorageManager`.
@@ -1081,7 +1109,7 @@ classDiagram
 
 > ✅ **Verify:** Add `.txt` to the extensions list in Options → open a `notes.txt` file → MarkUp renders it. Remove `.txt` → open another `.txt` file → raw text (no rendering). Default extensions (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx`) always work.
 
-#### Step 9.4 — Wire `cspStrict` Toggle
+#### Step 9.5 — Wire `cspStrict` Toggle
 
 - In `content-script.js`, at the start of the pipeline (after `autoRender` check):
   - Read `cspStrict` from `StorageManager`.
@@ -1096,9 +1124,9 @@ classDiagram
 
 > ✅ **Verify:** With strict CSP ON: open a `.md` file with `![img](https://example.com/photo.jpg)` → image tag is stripped, not rendered. Turn strict CSP OFF → re-render → image appears. Links to external URLs blocked in strict mode, allowed in relaxed mode.
 
-#### Step 9.5 — Append to AGENTS.md & Tests
+#### Step 9.6 — Append to AGENTS.md & Tests
 
-- Document Steps 9.1–9.4 in AGENTS.md.
+- Document Steps 9.1–9.5 in AGENTS.md.
 - Create `tests/phase9-browser-verify.html` with test groups covering:
   - `autoRender` flag read and pipeline skip.
   - `debugLog` flag read and Logger output control.
@@ -1109,27 +1137,6 @@ classDiagram
 - Update `README.md` with documentation for each setting's behavior.
 
 > ✅ **Verify:** All Phase 9 tests pass. All previous test suites (Phase 2–8) still pass with zero regressions. Documentation is current.
-
-#### Step 9.6 — Investigate Settings Overlap: `autoDetect` vs `autoRender` vs `extensions`
-
-> ⚠️ **Incident note:** During Step 9.1 implementation, a semantic overlap was identified between three settings that control related behavior:
-
-- **`autoDetect`** (Popup) — gates dynamic injection in the service worker (detection phase).
-- **`autoRender`** (Options → Behavior) — gates the content script pipeline (rendering phase).
-- **`extensions`** (Options → Behavior) — customizes which file extensions trigger detection.
-
-**Observed issues:**
-1. `autoDetect` and `extensions` both control the same detection phase — if `autoDetect` is OFF, custom `extensions` are irrelevant.
-2. If `autoRender` is OFF, `autoDetect` still injects content scripts that do nothing (wasted work).
-3. A user disabling `autoRender` likely also wants `autoDetect` off, but they are in different UIs (Options vs Popup).
-4. The three settings create a confusing mental model for users — it's unclear which combination of toggles achieves a desired behavior.
-
-**Action items — investigate and decide:**
-- [ ] Should `autoDetect` be consolidated into the Options page alongside `extensions` (both are detection-phase controls)?
-- [ ] Should `autoRender: false` implicitly disable dynamic injection (eliminating the need for a separate `autoDetect` toggle)?
-- [ ] Should `autoDetect` be removed from the Popup entirely, making `autoRender` the single master switch?
-- [ ] Alternatively, should the Popup's `autoDetect` be renamed/repurposed to something more distinct?
-- [ ] Document the final decision and refactor accordingly.
 
 ---
 

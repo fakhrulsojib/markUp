@@ -67,6 +67,7 @@ const DEFAULTS = Object.freeze({
   AUTORENDER: true,
   AUTODETECT: true,
   ENABLEFILEURL: true,
+  DEBUGLOG: false,
 });
 
 /**

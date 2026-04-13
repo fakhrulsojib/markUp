@@ -390,7 +390,8 @@ class ToolbarComponent extends BaseComponent {
         this._element.style.top = `${clampedTop}px`;
       }
     } catch (err) {
-      console.log('ToolbarComponent: Could not load persisted position.');
+      const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+      if (_Log) { _Log.debug('Toolbar', 'Could not load persisted position.'); }
     }
   }
 
