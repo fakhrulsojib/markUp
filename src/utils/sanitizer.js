@@ -74,6 +74,28 @@ class Sanitizer {
   ]);
 
   /**
+   * Create a strict sanitizer configuration.
+   * Strict mode:
+   * - Removes `img` from allowed tags (prevents external image loading).
+   * - Blocks `data:` URLs in href/src attributes.
+   * - Only `#anchor` links are allowed for `<a>` tags (external URLs stripped).
+   *
+   * @returns {Object} Configuration object for the Sanitizer constructor.
+   * @static
+   */
+  static createStrictConfig() {
+    // Clone default allowed tags and remove 'img'
+    const strictTags = new Set(Sanitizer.DEFAULT_ALLOWED_TAGS);
+    strictTags.delete('img');
+
+    return {
+      allowedTags: strictTags,
+      allowedAttributes: Sanitizer.DEFAULT_ALLOWED_ATTRIBUTES,
+      strictMode: true,
+    };
+  }
+
+  /**
    * Create a new Sanitizer instance.
    *
    * @param {Object} [config={}] - Configuration overrides.
@@ -86,6 +108,14 @@ class Sanitizer {
 
     /** @private */
     this._allowedAttributes = config.allowedAttributes || Sanitizer.DEFAULT_ALLOWED_ATTRIBUTES;
+
+    /**
+     * When true, only #anchor URLs are allowed. External URLs and data: URLs
+     * are blocked in href/src attributes.
+     * @type {boolean}
+     * @private
+     */
+    this._strictMode = config.strictMode === true;
 
     /** @private */
     this._parser = new DOMParser();
@@ -224,6 +254,11 @@ class Sanitizer {
     }
 
     const trimmed = url.trim();
+
+    // Strict mode: only allow #anchor URLs
+    if (this._strictMode) {
+      return trimmed.startsWith('#');
+    }
 
     // Allow relative URLs (no protocol)
     if (trimmed.startsWith('/') || trimmed.startsWith('#') || trimmed.startsWith('?') || trimmed.startsWith('.')) {

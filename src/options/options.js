@@ -106,7 +106,7 @@
       const debugLog = await storage.get('debugLog');
 
       const cspEl = document.getElementById('markup-opt-csp-strict');
-      if (cspEl) cspEl.checked = cspStrict !== false;
+      if (cspEl) cspEl.checked = cspStrict === true;
 
       const debugEl = document.getElementById('markup-opt-debug');
       if (debugEl) debugEl.checked = debugLog === true;
@@ -180,6 +180,7 @@
   function _wireAdvancedControls() {
     _wireToggle('markup-opt-csp-strict', async (checked) => {
       await _saveSetting('cspStrict', checked);
+      await _notifyContentScript('APPLY_CSP_STRICT', { cspStrict: checked });
     });
 
     _wireToggle('markup-opt-debug', async (checked) => {
@@ -216,7 +217,7 @@
       await storage.set('fontFamily', DEFAULTS.FONT_FAMILY);
       await storage.set('enabled', true);
       await storage.set('extensions', '');
-      await storage.set('cspStrict', true);
+      await storage.set('cspStrict', false);
       await storage.set('debugLog', false);
 
       // Reload UI

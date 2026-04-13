@@ -92,8 +92,12 @@
 
       <div class="markup-options-field markup-options-toggle-field">
         <label for="markup-opt-csp-strict">Strict CSP Mode</label>
-        <input type="checkbox" id="markup-opt-csp-strict" class="markup-options-toggle" checked>
+        <input type="checkbox" id="markup-opt-csp-strict" class="markup-options-toggle">
       </div>
+      <p class="markup-options-help">
+        🔒 Strict mode blocks external images and links. Only <code>#anchor</code> links are preserved.
+        Recommended for untrusted Markdown files.
+      </p>
 
       <div class="markup-options-field markup-options-toggle-field">
         <label for="markup-opt-debug">Debug Logging</label>

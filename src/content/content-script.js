@@ -356,6 +356,17 @@
         }
       }
 
+      // Read cspStrict setting for Sanitizer configuration
+      this._cspStrict = false;
+      if (earlyStorage) {
+        try {
+          const cspStrict = await earlyStorage.get('cspStrict');
+          this._cspStrict = cspStrict === true;
+        } catch (err) {
+          console.warn('MarkUp: Failed to check cspStrict setting:', err);
+        }
+      }
+
       // Store raw markdown for toggle feature
       this._rawMarkdown = rawMarkdown;
 
@@ -501,13 +512,20 @@
         throw new Error('Markdown parser returned empty HTML.');
       }
 
-      // Render
+      // Render — pass strict sanitizer config if cspStrict is enabled
       const HtmlRendererClass = (typeof MARKUP_HTML_RENDERER !== 'undefined') ? MARKUP_HTML_RENDERER : null;
       if (!HtmlRendererClass) {
         throw new Error('HtmlRenderer class not available. Ensure HtmlRenderer.js is loaded.');
       }
 
-      this._renderer = new HtmlRendererClass('body');
+      const SanitizerClass = (typeof MARKUP_SANITIZER !== 'undefined') ? MARKUP_SANITIZER : null;
+      const rendererOptions = {};
+      if (this._cspStrict && SanitizerClass) {
+        rendererOptions.sanitizerConfig = SanitizerClass.createStrictConfig();
+        if (_Logger) { _Logger.debug('ContentScript', 'Using strict CSP sanitizer config.'); }
+      }
+
+      this._renderer = new HtmlRendererClass('body', rendererOptions);
       this._renderer.render(htmlString);
 
       return this._renderer.getContentContainer();
@@ -823,9 +841,68 @@
         return { success: true };
       });
 
+      // Listen for APPLY_CSP_STRICT from popup/options via service worker relay
+      this._messageBus.listen('APPLY_CSP_STRICT', (payload) => {
+        if (payload && typeof payload.cspStrict === 'boolean') {
+          const oldValue = self._cspStrict;
+          self._cspStrict = payload.cspStrict;
+          if (_Logger) { _Logger.debug('ContentScript', `CSP strict mode changed: ${oldValue} → ${payload.cspStrict}`); }
+          // Re-render with new sanitizer config
+          self._reRender();
+        }
+        return { success: true };
+      });
+
       // Note: APPLY_ENABLED listeners are wired
       // early in run() (before the settings gates) so they're active even when
       // the pipeline short-circuits. They are NOT duplicated here.
+    }
+
+    /**
+     * Re-render the current document with updated sanitizer settings.
+     * Called when cspStrict is toggled live. Preserves theme, typography,
+     * and UI components (toolbar, settings panel) but rebuilds the content
+     * container and TOC.
+     * @private
+     */
+    async _reRender() {
+      if (!this._rawMarkdown) {
+        return;
+      }
+
+      try {
+        if (_Logger) { _Logger.debug('ContentScript', 'Re-rendering with updated CSP settings...'); }
+
+        // Re-parse and re-render (uses current this._cspStrict)
+        this._contentContainer = await this._parseAndRender(this._rawMarkdown);
+
+        // Re-apply syntax highlighting
+        this._applySyntaxHighlighting(this._contentContainer);
+
+        // Re-generate TOC data
+        this._generateTocData(this._contentContainer);
+
+        // Re-apply theme to the new container
+        if (this._themeManager) {
+          const currentTheme = this._themeManager.getTheme();
+          this._themeManager.applyTheme(currentTheme);
+        }
+
+        // Re-apply typography settings
+        await this._applyTypographySettings();
+
+        // Update TOC panel with new data if it exists
+        if (this._tocPanel && this._tocData) {
+          this._tocPanel.updateTocData(this._tocData);
+        }
+
+        // Re-set page title
+        _setPageTitle(this._contentContainer);
+
+        if (_Logger) { _Logger.debug('ContentScript', 'Re-render complete.'); }
+      } catch (error) {
+        console.error('MarkUp: Re-render failed:', error);
+      }
     }
 
     /**

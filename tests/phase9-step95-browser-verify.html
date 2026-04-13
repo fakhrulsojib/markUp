@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MarkUp Phase 9 Step 9.5 — CSP Strict Mode Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px;
+      background: #f6f8fa;
+      color: #24292f;
+    }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    .subtitle { font-size: 13px; color: #656d76; margin-bottom: 20px; }
+    #results { margin-top: 16px; }
+    .test-group {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .test-group-header {
+      padding: 10px 16px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .test {
+      padding: 8px 16px;
+      border-bottom: 1px solid #eaeef2;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test:last-child { border-bottom: none; }
+    .pass { color: #1a7f37; }
+    .fail { color: #cf222e; }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .badge.pass { background: #dafbe1; }
+    .badge.fail { background: #ffebe9; }
+    #summary {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    #summary.all-pass { background: #dafbe1; color: #1a7f37; }
+    #summary.has-fail { background: #ffebe9; color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Phase 9 Step 9.5 — CSP Strict Mode</h1>
+  <p class="subtitle">Testing Sanitizer strict config, cspStrict constant, HtmlRenderer integration, and options wiring.</p>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+  <!-- Mock chrome API -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
+      window.chrome = {
+        runtime: {
+          lastError: null,
+          sendMessage: function(msg, cb) { if (cb) cb({}); },
+          onMessage: {
+            addListener: function() {},
+            removeListener: function() {}
+          }
+        },
+        storage: {
+          sync: {
+            _data: {},
+            get: function(key, cb) {
+              const result = {};
+              if (key === null) {
+                Object.assign(result, this._data);
+              } else if (typeof key === 'string') {
+                if (this._data[key] !== undefined) result[key] = this._data[key];
+              }
+              cb(result);
+            },
+            set: function(items, cb) {
+              Object.assign(this._data, items);
+              if (cb) cb();
+            },
+            remove: function(key, cb) {
+              delete this._data[key];
+              if (cb) cb();
+            }
+          },
+          local: {
+            _data: {},
+            get: function(key, cb) {
+              const result = {};
+              if (typeof key === 'string') {
+                if (this._data[key] !== undefined) result[key] = this._data[key];
+              }
+              cb(result);
+            },
+            set: function(items, cb) {
+              Object.assign(this._data, items);
+              if (cb) cb();
+            },
+            remove: function(key, cb) {
+              delete this._data[key];
+              if (cb) cb();
+            }
+          }
+        }
+      };
+    }
+  </script>
+
+  <!-- Load source files -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/MessageBus.js"></script>
+  <script src="../src/core/Renderer.js"></script>
+  <script src="../src/core/HtmlRenderer.js"></script>
+
+  <script>
+    // --- Test Framework ---
+    const results = [];
+    function assert(name, condition, detail) {
+      results.push({ name, passed: !!condition, detail: detail || '' });
+    }
+
+    function renderResults() {
+      const container = document.getElementById('results');
+      const groups = {};
+
+      results.forEach(r => {
+        const groupName = r.name.split(':')[0].trim();
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(r);
+      });
+
+      let html = '';
+      for (const [group, tests] of Object.entries(groups)) {
+        html += `<div class="test-group">
+          <div class="test-group-header">${group}</div>`;
+        tests.forEach(t => {
+          const status = t.passed ? 'pass' : 'fail';
+          const label = t.passed ? 'PASS' : 'FAIL';
+          html += `<div class="test">
+            <span>${t.name.split(':').slice(1).join(':').trim() || t.name}</span>
+            <span class="badge ${status}">${label}</span>
+            ${t.detail && !t.passed ? `<span style="font-size:11px;color:#656d76">${t.detail}</span>` : ''}
+          </div>`;
+        });
+        html += '</div>';
+      }
+      container.innerHTML = html;
+
+      const total = results.length;
+      const passed = results.filter(r => r.passed).length;
+      const failed = total - passed;
+      const summary = document.getElementById('summary');
+      summary.className = failed === 0 ? 'all-pass' : 'has-fail';
+      summary.textContent = `${passed}/${total} passed` + (failed > 0 ? ` — ${failed} FAILED` : ' ✓');
+
+      // Update page title with results
+      document.title = failed === 0
+        ? `Phase 9.5 — ALL PASSED (${total} tests)`
+        : `Phase 9.5 — ${failed} FAILED (${total} tests)`;
+    }
+
+    // --- Tests ---
+
+    (function runTests() {
+
+      const Sanitizer = globalThis.MARKUP_SANITIZER;
+      const CONSTANTS = globalThis.MARKUP_CONSTANTS;
+
+      // ========================================
+      // Group 1: DEFAULTS.CSPSTRICT constant
+      // ========================================
+
+      assert(
+        'Constants: DEFAULTS.CSPSTRICT exists',
+        CONSTANTS && CONSTANTS.DEFAULTS && typeof CONSTANTS.DEFAULTS.CSPSTRICT === 'boolean'
+      );
+
+      assert(
+        'Constants: DEFAULTS.CSPSTRICT is false',
+        CONSTANTS && CONSTANTS.DEFAULTS.CSPSTRICT === false
+      );
+
+      // ========================================
+      // Group 2: Sanitizer.createStrictConfig()
+      // ========================================
+
+      assert(
+        'createStrictConfig: method exists',
+        typeof Sanitizer.createStrictConfig === 'function'
+      );
+
+      const strictConfig = Sanitizer.createStrictConfig();
+
+      assert(
+        'createStrictConfig: returns object',
+        typeof strictConfig === 'object' && strictConfig !== null
+      );
+
+      assert(
+        'createStrictConfig: has allowedTags',
+        strictConfig.allowedTags instanceof Set
+      );
+
+      assert(
+        'createStrictConfig: allowedTags does NOT contain img',
+        !strictConfig.allowedTags.has('img')
+      );
+
+      assert(
+        'createStrictConfig: allowedTags still contains p',
+        strictConfig.allowedTags.has('p')
+      );
+
+      assert(
+        'createStrictConfig: allowedTags still contains a',
+        strictConfig.allowedTags.has('a')
+      );
+
+      assert(
+        'createStrictConfig: allowedTags still contains code',
+        strictConfig.allowedTags.has('code')
+      );
+
+      assert(
+        'createStrictConfig: allowedTags still contains table',
+        strictConfig.allowedTags.has('table')
+      );
+
+      assert(
+        'createStrictConfig: allowedTags still contains h1-h6',
+        strictConfig.allowedTags.has('h1') && strictConfig.allowedTags.has('h6')
+      );
+
+      assert(
+        'createStrictConfig: strictMode flag is true',
+        strictConfig.strictMode === true
+      );
+
+      assert(
+        'createStrictConfig: has allowedAttributes',
+        typeof strictConfig.allowedAttributes === 'object'
+      );
+
+      // Verify DEFAULT_ALLOWED_TAGS is NOT mutated
+      assert(
+        'createStrictConfig: does not mutate DEFAULT_ALLOWED_TAGS',
+        Sanitizer.DEFAULT_ALLOWED_TAGS.has('img'),
+        'DEFAULT_ALLOWED_TAGS should still contain img'
+      );
+
+      // ========================================
+      // Group 3: Strict Sanitizer — img stripping
+      // ========================================
+
+      const strictSanitizer = new Sanitizer(Sanitizer.createStrictConfig());
+
+      const imgHtml = '<p>Text</p><img src="https://example.com/photo.jpg" alt="Photo"><p>More text</p>';
+      const imgResult = strictSanitizer.sanitize(imgHtml);
+
+      assert(
+        'Strict img: <img> tag is stripped',
+        !imgResult.includes('<img'),
+        `Got: ${imgResult}`
+      );
+
+      assert(
+        'Strict img: surrounding content preserved',
+        imgResult.includes('<p>Text</p>') && imgResult.includes('<p>More text</p>')
+      );
+
+      // ========================================
+      // Group 4: Strict Sanitizer — external link blocking
+      // ========================================
+
+      const extLinkHtml = '<a href="https://google.com">Google</a>';
+      const extLinkResult = strictSanitizer.sanitize(extLinkHtml);
+
+      assert(
+        'Strict links: external href is removed',
+        !extLinkResult.includes('href="https://google.com"'),
+        `Got: ${extLinkResult}`
+      );
+
+      assert(
+        'Strict links: <a> tag text preserved',
+        extLinkResult.includes('Google')
+      );
+
+      const httpLinkHtml = '<a href="http://example.com">Site</a>';
+      const httpLinkResult = strictSanitizer.sanitize(httpLinkHtml);
+      assert(
+        'Strict links: http href is removed',
+        !httpLinkResult.includes('href="http://example.com"'),
+        `Got: ${httpLinkResult}`
+      );
+
+      const mailtoHtml = '<a href="mailto:test@example.com">Email</a>';
+      const mailtoResult = strictSanitizer.sanitize(mailtoHtml);
+      assert(
+        'Strict links: mailto href is removed',
+        !mailtoResult.includes('href="mailto:'),
+        `Got: ${mailtoResult}`
+      );
+
+      // ========================================
+      // Group 5: Strict Sanitizer — anchor links preserved
+      // ========================================
+
+      const anchorHtml = '<a href="#section-1">Jump to Section 1</a>';
+      const anchorResult = strictSanitizer.sanitize(anchorHtml);
+
+      assert(
+        'Strict anchors: #anchor href is preserved',
+        anchorResult.includes('href="#section-1"'),
+        `Got: ${anchorResult}`
+      );
+
+      assert(
+        'Strict anchors: anchor text preserved',
+        anchorResult.includes('Jump to Section 1')
+      );
+
+      const emptyAnchor = '<a href="#top">Top</a>';
+      const emptyAnchorResult = strictSanitizer.sanitize(emptyAnchor);
+      assert(
+        'Strict anchors: #top anchor preserved',
+        emptyAnchorResult.includes('href="#top"')
+      );
+
+      // ========================================
+      // Group 6: Strict Sanitizer — data: URL blocking
+      // ========================================
+
+      const dataImgHtml = '<p><a href="data:text/html,<h1>XSS</h1>">Click</a></p>';
+      const dataImgResult = strictSanitizer.sanitize(dataImgHtml);
+
+      assert(
+        'Strict data: href is blocked',
+        !dataImgResult.includes('href="data:'),
+        `Got: ${dataImgResult}`
+      );
+
+      // ========================================
+      // Group 7: Strict Sanitizer — relative URLs blocked in strict mode
+      // ========================================
+
+      const relativeHtml = '<a href="/path/to/file">Relative</a>';
+      const relativeResult = strictSanitizer.sanitize(relativeHtml);
+
+      assert(
+        'Strict relative: /path href is blocked',
+        !relativeResult.includes('href="/path'),
+        `Got: ${relativeResult}`
+      );
+
+      const dotRelativeHtml = '<a href="./file.md">Dot Relative</a>';
+      const dotRelativeResult = strictSanitizer.sanitize(dotRelativeHtml);
+
+      assert(
+        'Strict relative: ./file href is blocked',
+        !dotRelativeResult.includes('href="./file.md"'),
+        `Got: ${dotRelativeResult}`
+      );
+
+      // ========================================
+      // Group 8: Relaxed Sanitizer — regression checks
+      // ========================================
+
+      const relaxedSanitizer = new Sanitizer(); // default (relaxed)
+
+      const relaxImgHtml = '<p>Text</p><img src="https://example.com/photo.jpg" alt="Photo">';
+      const relaxImgResult = relaxedSanitizer.sanitize(relaxImgHtml);
+
+      assert(
+        'Relaxed regression: <img> tag is preserved',
+        relaxImgResult.includes('<img'),
+        `Got: ${relaxImgResult}`
+      );
+
+      assert(
+        'Relaxed regression: img src preserved',
+        relaxImgResult.includes('src="https://example.com/photo.jpg"'),
+        `Got: ${relaxImgResult}`
+      );
+
+      const relaxLinkHtml = '<a href="https://google.com">Google</a>';
+      const relaxLinkResult = relaxedSanitizer.sanitize(relaxLinkHtml);
+
+      assert(
+        'Relaxed regression: external href preserved',
+        relaxLinkResult.includes('href="https://google.com"'),
+        `Got: ${relaxLinkResult}`
+      );
+
+      const relaxAnchorHtml = '<a href="#section">Anchor</a>';
+      const relaxAnchorResult = relaxedSanitizer.sanitize(relaxAnchorHtml);
+
+      assert(
+        'Relaxed regression: anchor href preserved',
+        relaxAnchorResult.includes('href="#section"'),
+        `Got: ${relaxAnchorResult}`
+      );
+
+      const relaxDataHtml = '<a href="data:text/html,test">Data</a>';
+      const relaxDataResult = relaxedSanitizer.sanitize(relaxDataHtml);
+
+      assert(
+        'Relaxed regression: data: href preserved',
+        relaxDataResult.includes('href="data:'),
+        `Got: ${relaxDataResult}`
+      );
+
+      const relaxRelativeHtml = '<a href="/path/file">Relative</a>';
+      const relaxRelativeResult = relaxedSanitizer.sanitize(relaxRelativeHtml);
+
+      assert(
+        'Relaxed regression: relative href preserved',
+        relaxRelativeResult.includes('href="/path/file"'),
+        `Got: ${relaxRelativeResult}`
+      );
+
+      const relaxMailtoHtml = '<a href="mailto:test@example.com">Email</a>';
+      const relaxMailtoResult = relaxedSanitizer.sanitize(relaxMailtoHtml);
+
+      assert(
+        'Relaxed regression: mailto href preserved',
+        relaxMailtoResult.includes('href="mailto:test@example.com"'),
+        `Got: ${relaxMailtoResult}`
+      );
+
+      // ========================================
+      // Group 9: Strict Sanitizer — other tags preserved
+      // ========================================
+
+      const generalHtml = '<h1>Title</h1><p>Paragraph</p><pre><code>code</code></pre><ul><li>item</li></ul>';
+      const generalResult = strictSanitizer.sanitize(generalHtml);
+
+      assert(
+        'Strict general: h1 preserved',
+        generalResult.includes('<h1>')
+      );
+
+      assert(
+        'Strict general: p preserved',
+        generalResult.includes('<p>')
+      );
+
+      assert(
+        'Strict general: pre/code preserved',
+        generalResult.includes('<pre>') && generalResult.includes('<code>')
+      );
+
+      assert(
+        'Strict general: ul/li preserved',
+        generalResult.includes('<ul>') && generalResult.includes('<li>')
+      );
+
+      // ========================================
+      // Group 10: Strict Sanitizer — XSS still blocked
+      // ========================================
+
+      const xssScript = '<scr' + 'ipt>alert("xss")<' + '/script><p>safe</p>';
+      const xssResult = strictSanitizer.sanitize(xssScript);
+
+      assert(
+        'Strict XSS: <script> still stripped',
+        !xssResult.includes('<script'),
+        `Got: ${xssResult}`
+      );
+
+      const xssOnclick = '<p onclick="alert(1)">Click</p>';
+      const xssOnclickResult = strictSanitizer.sanitize(xssOnclick);
+
+      assert(
+        'Strict XSS: onclick still stripped',
+        !xssOnclickResult.includes('onclick'),
+        `Got: ${xssOnclickResult}`
+      );
+
+      const xssJavascript = '<a href="javascript:alert(1)">XSS</a>';
+      const xssJavascriptResult = strictSanitizer.sanitize(xssJavascript);
+
+      assert(
+        'Strict XSS: javascript: href still blocked',
+        !xssJavascriptResult.includes('javascript:'),
+        `Got: ${xssJavascriptResult}`
+      );
+
+      // ========================================
+      // Group 11: HtmlRenderer with strict config
+      // ========================================
+
+      // Create a temporary container for HtmlRenderer
+      const tempContainer = document.createElement('div');
+      tempContainer.id = 'test-renderer-mount';
+      tempContainer.style.display = 'none';
+      document.body.appendChild(tempContainer);
+
+      const strictRenderer = new MARKUP_HTML_RENDERER('#test-renderer-mount', {
+        sanitizerConfig: Sanitizer.createStrictConfig()
+      });
+
+      const mdHtml = '<h1>Hello</h1><p>Text with <img src="https://img.com/pic.png" alt="pic"></p><a href="https://google.com">Link</a>';
+      strictRenderer.render(mdHtml);
+      const renderedContent = strictRenderer.getContentContainer();
+
+      assert(
+        'HtmlRenderer strict: container exists',
+        renderedContent !== null
+      );
+
+      assert(
+        'HtmlRenderer strict: no img elements rendered',
+        renderedContent.querySelectorAll('img').length === 0,
+        `Found ${renderedContent.querySelectorAll('img').length} img elements`
+      );
+
+      assert(
+        'HtmlRenderer strict: h1 rendered',
+        renderedContent.querySelectorAll('h1').length === 1
+      );
+
+      assert(
+        'HtmlRenderer strict: p rendered',
+        renderedContent.querySelectorAll('p').length > 0
+      );
+
+      const links = renderedContent.querySelectorAll('a');
+      let hasExternalHref = false;
+      links.forEach(a => {
+        const href = a.getAttribute('href');
+        if (href && href.startsWith('http')) hasExternalHref = true;
+      });
+
+      assert(
+        'HtmlRenderer strict: no external hrefs',
+        !hasExternalHref,
+        `Found external href in rendered content`
+      );
+
+      // Cleanup
+      document.body.removeChild(tempContainer);
+
+      // ========================================
+      // Group 12: HtmlRenderer relaxed (default)
+      // ========================================
+
+      const tempContainer2 = document.createElement('div');
+      tempContainer2.id = 'test-renderer-mount-2';
+      tempContainer2.style.display = 'none';
+      document.body.appendChild(tempContainer2);
+
+      const relaxedRenderer = new MARKUP_HTML_RENDERER('#test-renderer-mount-2');
+
+      relaxedRenderer.render(mdHtml);
+      const relaxedContent = relaxedRenderer.getContentContainer();
+
+      assert(
+        'HtmlRenderer relaxed: img elements rendered',
+        relaxedContent.querySelectorAll('img').length > 0,
+        `Found ${relaxedContent.querySelectorAll('img').length} img elements`
+      );
+
+      const relaxedLinks = relaxedContent.querySelectorAll('a');
+      let hasRelaxedHref = false;
+      relaxedLinks.forEach(a => {
+        const href = a.getAttribute('href');
+        if (href && href.startsWith('http')) hasRelaxedHref = true;
+      });
+
+      assert(
+        'HtmlRenderer relaxed: external hrefs preserved',
+        hasRelaxedHref
+      );
+
+      // Cleanup
+      document.body.removeChild(tempContainer2);
+
+      // ========================================
+      // Group 13: Sanitizer constructor — _strictMode flag
+      // ========================================
+
+      const defaultSanitizer = new Sanitizer();
+      assert(
+        'Constructor: default _strictMode is false',
+        defaultSanitizer._strictMode === false
+      );
+
+      const explicitStrict = new Sanitizer({ strictMode: true });
+      assert(
+        'Constructor: {strictMode: true} sets _strictMode true',
+        explicitStrict._strictMode === true
+      );
+
+      const explicitRelaxed = new Sanitizer({ strictMode: false });
+      assert(
+        'Constructor: {strictMode: false} sets _strictMode false',
+        explicitRelaxed._strictMode === false
+      );
+
+      // ========================================
+      // Group 14: StorageManager default fallback
+      // ========================================
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+
+      assert(
+        'StorageManager: _getDefault("cspStrict") returns false',
+        sm._getDefault('cspStrict') === false,
+        `Got: ${sm._getDefault('cspStrict')}`
+      );
+
+      // ========================================
+      // Group 15: Regression — existing sanitizer behavior
+      // ========================================
+
+      const regSanitizer = new Sanitizer();
+
+      // Script stripping
+      const regScript = regSanitizer.sanitize('<scr' + 'ipt>evil()<' + '/script><p>safe</p>');
+      assert(
+        'Regression: script stripping works',
+        !regScript.includes('<script') && regScript.includes('<p>safe</p>')
+      );
+
+      // Iframe stripping
+      const regIframe = regSanitizer.sanitize('<iframe src="evil.com"></iframe><p>ok</p>');
+      assert(
+        'Regression: iframe stripping works',
+        !regIframe.includes('<iframe') && regIframe.includes('<p>ok</p>')
+      );
+
+      // onclick stripping
+      const regOnclick = regSanitizer.sanitize('<p onclick="evil()">text</p>');
+      assert(
+        'Regression: onclick stripping works',
+        !regOnclick.includes('onclick')
+      );
+
+      // Empty input
+      assert(
+        'Regression: sanitize empty string',
+        regSanitizer.sanitize('') === ''
+      );
+
+      assert(
+        'Regression: sanitize null',
+        regSanitizer.sanitize(null) === ''
+      );
+
+      // Allowed tags
+      const regAllowed = regSanitizer.sanitize('<strong>bold</strong><em>italic</em>');
+      assert(
+        'Regression: strong/em preserved',
+        regAllowed.includes('<strong>') && regAllowed.includes('<em>')
+      );
+
+      // Checkbox
+      const regCheckbox = regSanitizer.sanitize('<input type="checkbox" checked>');
+      assert(
+        'Regression: checkbox input preserved',
+        regCheckbox.includes('<input') && regCheckbox.includes('checkbox')
+      );
+
+      // Non-checkbox input stripped
+      const regTextInput = regSanitizer.sanitize('<input type="text" value="evil">');
+      assert(
+        'Regression: text input stripped',
+        !regTextInput.includes('<input')
+      );
+
+      // Table tags
+      const regTable = regSanitizer.sanitize('<table><tr><td>cell</td></tr></table>');
+      assert(
+        'Regression: table tags preserved',
+        regTable.includes('<table>') && regTable.includes('<td>')
+      );
+
+      // Render results
+      renderResults();
+
+    })();
+  </script>
+</body>
+</html>
