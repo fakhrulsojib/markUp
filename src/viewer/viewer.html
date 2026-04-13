@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MarkUp Viewer</title>
+  <!-- CSS: same order as manifest -->
+  <link rel="stylesheet" href="../styles/variables.css">
+  <link rel="stylesheet" href="../styles/themes/light.css">
+  <link rel="stylesheet" href="../styles/themes/dark.css">
+  <link rel="stylesheet" href="../styles/themes/sepia.css">
+  <link rel="stylesheet" href="../styles/typography.css">
+  <link rel="stylesheet" href="../content/content.css">
+  <link rel="stylesheet" href="../styles/code-highlight.css">
+  <link rel="stylesheet" href="../styles/ui-components.css">
+  <link rel="stylesheet" href="../styles/print.css">
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <!-- Scripts: vendor + core (same order as manifest) -->
+  <script src="../vendor/marked.min.js"></script>
+  <script src="../vendor/highlight.min.js"></script>
+  <script src="../utils/constants.js"></script>
+  <script src="../utils/dom-helpers.js"></script>
+  <script src="../utils/sanitizer.js"></script>
+  <script src="../utils/logger.js"></script>
+  <script src="../core/EventEmitter.js"></script>
+  <script src="../core/FileDetector.js"></script>
+  <script src="../core/StorageManager.js"></script>
+  <script src="../core/Renderer.js"></script>
+  <script src="../core/MarkdownParser.js"></script>
+  <script src="../core/HtmlRenderer.js"></script>
+  <script src="../core/SyntaxHighlighter.js"></script>
+  <script src="../core/TocGenerator.js"></script>
+  <script src="../core/ThemeManager.js"></script>
+  <script src="../core/SearchController.js"></script>
+  <script src="../core/PrintManager.js"></script>
+  <script src="../core/KeyboardManager.js"></script>
+  <script src="../core/MessageBus.js"></script>
+  <script src="../ui/BaseComponent.js"></script>
+  <script src="../ui/ToolbarComponent.js"></script>
+  <script src="../ui/TocPanelComponent.js"></script>
+  <script src="../ui/SearchBarComponent.js"></script>
+  <script src="../ui/SettingsPanelComponent.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>

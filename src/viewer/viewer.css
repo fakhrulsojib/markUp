@@ -1,0 +1,210 @@
+/**
+ * MarkUp — Viewer Extension Page Styles
+ *
+ * Viewer-specific styles for loading state, error cards,
+ * "Save file" button, and edge case messages.
+ * All content styling comes from existing CSS files
+ * (variables, themes, typography, content, ui-components).
+ */
+
+/* --- Loading State --- */
+
+.markup-viewer-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 20px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.markup-viewer-spinner {
+  display: flex;
+  gap: 8px;
+}
+
+.markup-viewer-spinner-dot {
+  width: 10px;
+  height: 10px;
+  background: #0969da;
+  border-radius: 50%;
+  animation: markup-viewer-bounce 1.4s infinite ease-in-out both;
+}
+
+.markup-viewer-spinner-dot:nth-child(1) { animation-delay: -0.32s; }
+.markup-viewer-spinner-dot:nth-child(2) { animation-delay: -0.16s; }
+.markup-viewer-spinner-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes markup-viewer-bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+}
+
+.markup-viewer-loading-text {
+  font-size: 14px;
+  color: #656d76;
+}
+
+.markup-viewer-loading-filename {
+  font-size: 12px;
+  color: #8b949e;
+  font-family: monospace;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Error Card --- */
+
+.markup-viewer-error {
+  max-width: 500px;
+  margin: 80px auto;
+  padding: 40px;
+  text-align: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #24292f;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.markup-viewer-error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.markup-viewer-error h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.markup-viewer-error p {
+  font-size: 14px;
+  color: #656d76;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.markup-viewer-error-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.markup-viewer-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.markup-viewer-btn-primary {
+  color: #ffffff;
+  background: #0969da;
+  border-color: #0969da;
+}
+
+.markup-viewer-btn-primary:hover {
+  background: #0860ca;
+}
+
+.markup-viewer-btn-secondary {
+  color: #24292f;
+  background: #f6f8fa;
+  border-color: #d0d7de;
+}
+
+.markup-viewer-btn-secondary:hover {
+  background: #eaeef2;
+  border-color: #a3aab2;
+}
+
+/* --- Save File Button --- */
+
+.markup-viewer-save-btn {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 10001;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  color: #24292f;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: all 0.15s ease;
+}
+
+.markup-viewer-save-btn:hover {
+  background: #f6f8fa;
+  border-color: #a3aab2;
+}
+
+.markup-viewer-save-btn:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: 1px;
+}
+
+/* --- Empty File Card --- */
+
+.markup-viewer-empty {
+  max-width: 500px;
+  margin: 80px auto;
+  padding: 40px;
+  text-align: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #24292f;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.markup-viewer-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.markup-viewer-empty h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.markup-viewer-empty p {
+  font-size: 14px;
+  color: #656d76;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* --- Large File Warning --- */
+
+.markup-viewer-large-warning {
+  position: sticky;
+  top: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fff8c5;
+  border-bottom: 1px solid #d4a72c;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #6a5306;
+}
