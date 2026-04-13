@@ -858,15 +858,93 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 
 ---
 
-### Future Phases (Pipeline)
+### Phase 10.5 — Post-Release Polish ✅
 
-- **Phase 11:** Mermaid diagram rendering in fenced code blocks
-- **Phase 12:** Math/LaTeX rendering (KaTeX)
-- **Phase 13:** Custom CSS injection (user-provided stylesheets)
-- **Phase 14:** Multi-file wiki navigation (relative link following)
-- **Phase 15:** Chrome Web Store publication & auto-update
+> **Goal:** Fix bugs discovered in Phase 10 testing, consolidate branding, add UX improvements.
+
+#### Step 10.5.1 — Save Button Fix ✅
+
+- **Problem:** Viewer "Save file" button re-triggered download interception (infinite loop) and failed for expired URLs.
+- **Fix:** Save button now creates a `Blob` from `_rawMarkdown` (already in memory) and uses `<a download>` trick.
+- Service worker `_handleMarkdownDownload()` now skips `blob:` / `data:` URLs and downloads by own extension (`byExtensionId`).
+
+#### Step 10.5.2 — Favicon Support ✅
+
+- Content script `_setFavicon()` injects `<link rel="icon">` via `chrome.runtime.getURL()` for local `file://` pages.
+- `viewer.html`, `popup.html`, `options.html` all have `<link rel="icon">` pointing to `icon-transparent.png`.
+- `icon-transparent.png` added to `web_accessible_resources` so content scripts can reference it.
+
+#### Step 10.5.3 — Icon Consolidation ✅
+
+- All manifest icon entries and `<img>` references consolidated to `icon-transparent.png`.
+- Created `icon-256.png` and `icon-512.png` for Chrome Web Store submission.
+- Created `icon-512-black.png` variant for dark backgrounds.
+
+#### Step 10.5.4 — Version Consistency ✅
+
+- Bumped version `0.1.0` → `0.3.0` across: `manifest.json`, `popup.html`, `options.html`, `package.sh`.
+- Verified consistency with `README.md` and `PLAN.md` (already at `0.3.0`).
+
+#### Step 10.5.5 — Developer Info & Clear History ✅
+
+- Added "Developer: fakhrulsojib" row with LinkedIn link to options page About section.
+- Added 🗑️ "Clear history" button in popup next to "Recent Files" heading.
+- Added `CLEAR_RECENT_FILES` MessageBus handler in service worker.
+
+> ✅ **Verify:** All tests pass. All prior suites pass with zero regressions.
 
 ---
 
-> **End of PLAN.md — v0.3.0 | Phases 1–10 Complete**
+### Phase 11 — Themed Extension Pages
+
+> **Goal:** The popup and options page should reflect the user's selected theme (light/dark/sepia) instead of always using a hardcoded light design.
+
+#### Step 11.1 — Shared Theme Variables
+
+- Extract the core CSS custom properties (backgrounds, text colors, borders, accents) from the content themes (`light.css`, `dark.css`, `sepia.css`) into a shared theme stylesheet that popup and options pages can import.
+- Ensure the popup and options pages load `variables.css` + the shared theme styles.
+
+#### Step 11.2 — Popup Theme Support
+
+- On popup open, read the current `theme` from `StorageManager`.
+- Apply the theme class (e.g., `markup-theme-dark`) to the popup `<body>`.
+- Update all popup CSS to use CSS custom properties instead of hardcoded colors.
+- Theme quick-switch buttons should update the popup's own theme immediately.
+
+#### Step 11.3 — Options Page Theme Support
+
+- On options page load, read the current `theme` from `StorageManager`.
+- Apply the theme class to the options `<body>`.
+- Update all options CSS to use CSS custom properties instead of hardcoded colors.
+- Theme radio buttons / selectors should update the options page's own theme immediately.
+
+#### Step 11.4 — Live Theme Relay for Extension Pages
+
+- When `APPLY_THEME` is broadcast via `chrome.runtime.sendMessage()`, the popup and options pages should listen and update their theme in real time.
+- Ensure no flash of wrong theme on page load (apply theme before rendering content).
+
+#### Step 11.5 — Testing & Verification
+
+- Create `tests/phase11-browser-verify.html` with tests for:
+  - Theme class application on popup/options body
+  - CSS custom property usage (no hardcoded colors)
+  - Live theme switching via MessageBus
+- Manual QA: switch between light/dark/sepia and verify popup + options match.
+- Update `AGENTS.md`, `README.md`.
+
+> ✅ **Verify:** Popup and options pages visually match the selected theme. All prior test suites pass.
+
+---
+
+### Future Phases (Pipeline)
+
+- **Phase 12:** Mermaid diagram rendering in fenced code blocks
+- **Phase 13:** Math/LaTeX rendering (KaTeX)
+- **Phase 14:** Custom CSS injection (user-provided stylesheets)
+- **Phase 15:** Multi-file wiki navigation (relative link following)
+- **Phase 16:** Chrome Web Store publication & auto-update
+
+---
+
+> **End of PLAN.md — v0.3.0 | Phases 1–10.5 Complete, Phase 11 Planned**
 

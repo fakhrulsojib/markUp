@@ -235,6 +235,20 @@ messageBus.listen('GET_RECENT_FILES', async (payload, sender) => {
 });
 
 /**
+ * Handle 'CLEAR_RECENT_FILES' action — clears the recent files list.
+ */
+messageBus.listen('CLEAR_RECENT_FILES', async (payload, sender) => {
+  try {
+    await recentStorage.set('recentFiles', []);
+    MARKUP_LOGGER.debug('ServiceWorker', 'Recent files cleared.');
+    return { success: true };
+  } catch (err) {
+    console.warn('MarkUp: Failed to clear recent files:', err);
+    return { success: false };
+  }
+});
+
+/**
  * Handle 'ADD_RECENT_FILE' action — adds a file to the recent files list.
  */
 messageBus.listen('ADD_RECENT_FILE', async (payload, sender) => {

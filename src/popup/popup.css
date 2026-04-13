@@ -101,6 +101,33 @@ body {
   margin-bottom: 8px;
 }
 
+.markup-popup-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.markup-popup-section-header h2 {
+  margin-bottom: 0;
+}
+
+.markup-clear-recent-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.2s, background 0.2s;
+  line-height: 1;
+}
+
+.markup-clear-recent-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* --- Theme Quick Switch --- */
 
 .markup-popup-theme-buttons {

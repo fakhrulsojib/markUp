@@ -18,6 +18,7 @@
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
 | 9 | ✅ Done | 2026-04-13 | Settings backend wiring (enabled, debugLog, extensions, cspStrict) |
 | 10 | ✅ Done | 2026-04-13 | Download interception, viewer.html, popup notification |
+| 10.5 | ✅ Done | 2026-04-13 | Save fix, favicon, icon consolidation, clear history, version bump |
 
 ---
 
@@ -96,6 +97,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | `APPLY_DEBUG_LOG` | Options | SW relay → Logger.setEnabled() |
 | `APPLY_INTERCEPT_DOWNLOADS` | Popup/Options | SW local (no relay — consumed by download listener) |
 | `GET_LAST_INTERCEPTED` | Popup | SW responds with last intercepted filename (30s window) |
+| `CLEAR_RECENT_FILES` | Popup | SW clears `recentFiles` from storage |
 
 ---
 
@@ -351,6 +353,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | Phase 9.4 | `tests/phase9-step94-browser-verify.html` | 42 tests |
 | Phase 9.5 | `tests/phase9-step95-browser-verify.html` | 60 tests |
 | Phase 10 | `tests/phase10-browser-verify.html` | ~70 tests |
+| Phase 10.5 | `tests/phase10.5-browser-verify.html` | Post-release polish |
 
 ---
 
@@ -415,3 +418,25 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 - **CORS for viewer fetch:** Added `host_permissions: ["<all_urls>"]` to manifest so `viewer.html` and the service worker can `fetch()` cross-origin URLs (Google Chat, Slack, etc.) without CORS blocks.
 - **`_showCORSError()` handler:** Dedicated CORS error card in viewer.js with "Download instead", "Open in browser" (direct navigation with session cookies), and "Try again" buttons. Acts as a safety net if `host_permissions` is ever insufficient.
 
+---
+
+## Phase 10.5 — Post-Release Polish
+**Steps 10.5.1–10.5.5 · All Completed**
+
+### Changes
+| Area | Change |
+|------|--------|
+| **Save button fix (10.5.1)** | Viewer save uses `Blob` from `_rawMarkdown` + `<a download>`. SW skips `blob:` URLs and `byExtensionId` matches. |
+| **Favicon support (10.5.2)** | Content script `_setFavicon()` injects icon. All HTML pages have `<link rel="icon">`. |
+| **Icon consolidation (10.5.3)** | All icon refs → `icon-transparent.png`. Added 256px, 512px, 512px-black variants. |
+| **Version bump (10.5.4)** | `0.1.0` → `0.3.0` in manifest, popup, options, package.sh. |
+| **Developer info + Clear history (10.5.5)** | Options About section: Developer row with LinkedIn. Popup: 🗑️ clear history button + `CLEAR_RECENT_FILES` handler. |
+
+### Key Decisions
+- **Blob save over re-fetch:** Original URL may have expired (Google Chat tokens). Blob is always available.
+- **Triple interception guard:** `blob:` URL check + `data:` URL check + `byExtensionId` check — belt and suspenders.
+- **Icon consolidation:** Single `icon-transparent.png` for all sizes — Chrome auto-scales. Simplifies maintenance.
+
+---
+
+> **For future agents:** Always check this file's "Known Deviations" section, the "Settings Model" table, and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their Phase 1 skeletons.

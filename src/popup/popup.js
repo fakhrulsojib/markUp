@@ -71,6 +71,7 @@
     _wireThemeButtons();
     _wireToggleSwitches();
     _wireOptionsLink();
+    _wireClearRecentButton();
   }
 
   // --- Theme Quick Switch ---
@@ -370,6 +371,27 @@
     if (url) {
       chrome.tabs.create({ url: url });
     }
+  }
+
+  /**
+   * Wire the clear recent files button.
+   * Sends CLEAR_RECENT_FILES to the service worker and resets the list.
+   * @private
+   */
+  function _wireClearRecentButton() {
+    const btn = document.getElementById('markup-clear-recent');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+      if (!messageBus) return;
+
+      try {
+        await messageBus.send('CLEAR_RECENT_FILES');
+        _renderRecentFiles([]);
+      } catch (err) {
+        console.warn('Popup: Failed to clear recent files:', err);
+      }
+    });
   }
 
   // --- Options Link ---
