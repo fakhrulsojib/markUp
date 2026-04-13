@@ -66,6 +66,7 @@ const DEFAULTS = Object.freeze({
   TOOLBAR_POSITION: 'top-right',
   ENABLED: true,
   DEBUGLOG: false,
+  EXTENSIONS: '.md, .markdown, .mdown, .mkd, .mdx',
 });
 
 /**

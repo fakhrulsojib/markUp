@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MarkUp Phase 9 Step 9.4 — Custom Extensions Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px;
+      background: #f6f8fa;
+      color: #24292f;
+    }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    .subtitle { font-size: 13px; color: #656d76; margin-bottom: 20px; }
+    #results { margin-top: 16px; }
+    .test-group {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .test-group-header {
+      padding: 10px 16px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .test {
+      padding: 8px 16px;
+      border-bottom: 1px solid #eaeef2;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test:last-child { border-bottom: none; }
+    .pass { color: #1a7f37; }
+    .fail { color: #cf222e; }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .badge.pass { background: #dafbe1; }
+    .badge.fail { background: #ffebe9; }
+    #summary {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    #summary.all-pass { background: #dafbe1; color: #1a7f37; }
+    #summary.has-fail { background: #ffebe9; color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Phase 9 Step 9.4 — Custom File Extensions</h1>
+  <p class="subtitle">Testing FileDetector.setCustomExtensions(), constants, and options wiring.</p>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+  <!-- Mock chrome API -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
+      window.chrome = {
+        runtime: {
+          lastError: null,
+          sendMessage: function(msg, cb) { if (cb) cb({}); },
+          onMessage: {
+            addListener: function() {},
+            removeListener: function() {}
+          }
+        },
+        storage: {
+          sync: {
+            _data: {},
+            get: function(key, cb) {
+              const result = {};
+              if (key === null) {
+                Object.assign(result, this._data);
+              } else if (typeof key === 'string') {
+                if (this._data[key] !== undefined) result[key] = this._data[key];
+              }
+              cb(result);
+            },
+            set: function(items, cb) {
+              Object.assign(this._data, items);
+              if (cb) cb();
+            },
+            remove: function(key, cb) {
+              delete this._data[key];
+              if (cb) cb();
+            }
+          },
+          local: {
+            _data: {},
+            get: function(key, cb) {
+              const result = {};
+              if (typeof key === 'string') {
+                if (this._data[key] !== undefined) result[key] = this._data[key];
+              }
+              cb(result);
+            },
+            set: function(items, cb) {
+              Object.assign(this._data, items);
+              if (cb) cb();
+            },
+            remove: function(key, cb) {
+              delete this._data[key];
+              if (cb) cb();
+            }
+          }
+        }
+      };
+    }
+  </script>
+
+  <!-- Load source files -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/MessageBus.js"></script>
+  <script src="../src/core/FileDetector.js"></script>
+
+  <script>
+    // --- Test Framework ---
+    const results = [];
+    function assert(name, condition, detail) {
+      results.push({ name, passed: !!condition, detail: detail || '' });
+    }
+
+    function renderResults() {
+      const container = document.getElementById('results');
+      const groups = {};
+
+      results.forEach(r => {
+        const groupName = r.name.split(':')[0].trim();
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(r);
+      });
+
+      let html = '';
+      for (const [group, tests] of Object.entries(groups)) {
+        html += `<div class="test-group">
+          <div class="test-group-header">${group}</div>`;
+        tests.forEach(t => {
+          const status = t.passed ? 'pass' : 'fail';
+          const label = t.passed ? 'PASS' : 'FAIL';
+          html += `<div class="test">
+            <span>${t.name.split(':').slice(1).join(':').trim() || t.name}</span>
+            <span class="badge ${status}">${label}</span>
+            ${t.detail && !t.passed ? `<span style="font-size:11px;color:#656d76">${t.detail}</span>` : ''}
+          </div>`;
+        });
+        html += '</div>';
+      }
+      container.innerHTML = html;
+
+      const total = results.length;
+      const passed = results.filter(r => r.passed).length;
+      const failed = total - passed;
+      const summary = document.getElementById('summary');
+      summary.className = failed === 0 ? 'all-pass' : 'has-fail';
+      summary.textContent = `${passed}/${total} passed` + (failed > 0 ? ` — ${failed} FAILED` : ' ✓');
+    }
+
+    // --- Tests ---
+
+    (function runTests() {
+
+      // ========================================
+      // Group 1: DEFAULTS.EXTENSIONS constant
+      // ========================================
+
+      const CONSTANTS = globalThis.MARKUP_CONSTANTS;
+
+      assert(
+        'Constants: DEFAULTS.EXTENSIONS exists',
+        CONSTANTS && CONSTANTS.DEFAULTS && typeof CONSTANTS.DEFAULTS.EXTENSIONS === 'string'
+      );
+
+      assert(
+        'Constants: DEFAULTS.EXTENSIONS has correct value',
+        CONSTANTS && CONSTANTS.DEFAULTS.EXTENSIONS === '.md, .markdown, .mdown, .mkd, .mdx'
+      );
+
+      // ========================================
+      // Group 2: FileDetector._builtInPatterns
+      // ========================================
+
+      const fd = new MARKUP_FILE_DETECTOR();
+
+      assert(
+        'FileDetector: _builtInPatterns exists',
+        Array.isArray(fd._builtInPatterns) && fd._builtInPatterns.length > 0
+      );
+
+      assert(
+        'FileDetector: _builtInPatterns has 5 default patterns',
+        fd._builtInPatterns.length === 5
+      );
+
+      assert(
+        'FileDetector: _patterns initially equals _builtInPatterns length',
+        fd._patterns.length === fd._builtInPatterns.length
+      );
+
+      // ========================================
+      // Group 3: setCustomExtensions() — basic parsing
+      // ========================================
+
+      const fd2 = new MARKUP_FILE_DETECTOR();
+
+      fd2.setCustomExtensions('.txt, .rst, .adoc');
+      assert(
+        'setCustomExtensions: parses 3 custom extensions',
+        fd2._patterns.length === 5 + 3,
+        `Expected 8, got ${fd2._patterns.length}`
+      );
+
+      assert(
+        'setCustomExtensions: .txt matches after adding',
+        fd2.isMarkdownUrl('file:///home/user/notes.txt')
+      );
+
+      assert(
+        'setCustomExtensions: .rst matches after adding',
+        fd2.isMarkdownUrl('https://example.com/readme.rst')
+      );
+
+      assert(
+        'setCustomExtensions: .adoc matches after adding',
+        fd2.isMarkdownUrl('https://example.com/guide.adoc')
+      );
+
+      // ========================================
+      // Group 4: setCustomExtensions() — built-in preservation
+      // ========================================
+
+      assert(
+        'Built-in preservation: .md still matches after setCustomExtensions',
+        fd2.isMarkdownUrl('file:///docs/README.md')
+      );
+
+      assert(
+        'Built-in preservation: .markdown still matches',
+        fd2.isMarkdownUrl('file:///docs/README.markdown')
+      );
+
+      assert(
+        'Built-in preservation: .mdown still matches',
+        fd2.isMarkdownUrl('file:///docs/README.mdown')
+      );
+
+      assert(
+        'Built-in preservation: .mkd still matches',
+        fd2.isMarkdownUrl('file:///docs/README.mkd')
+      );
+
+      assert(
+        'Built-in preservation: .mdx still matches',
+        fd2.isMarkdownUrl('file:///docs/README.mdx')
+      );
+
+      // ========================================
+      // Group 5: setCustomExtensions() — empty/invalid input
+      // ========================================
+
+      const fd3 = new MARKUP_FILE_DETECTOR();
+
+      fd3.setCustomExtensions('');
+      assert(
+        'Empty input: resets to built-in only',
+        fd3._patterns.length === 5,
+        `Expected 5, got ${fd3._patterns.length}`
+      );
+
+      fd3.setCustomExtensions(null);
+      assert(
+        'Null input: resets to built-in only',
+        fd3._patterns.length === 5
+      );
+
+      fd3.setCustomExtensions(undefined);
+      assert(
+        'Undefined input: resets to built-in only',
+        fd3._patterns.length === 5
+      );
+
+      fd3.setCustomExtensions('   ');
+      assert(
+        'Whitespace-only input: resets to built-in only',
+        fd3._patterns.length === 5
+      );
+
+      // ========================================
+      // Group 6: setCustomExtensions() — deduplication
+      // ========================================
+
+      const fd4 = new MARKUP_FILE_DETECTOR();
+
+      fd4.setCustomExtensions('.md, .txt');
+      assert(
+        'Dedup: .md in custom list is deduplicated (only .txt added)',
+        fd4._patterns.length === 5 + 1,
+        `Expected 6, got ${fd4._patterns.length}`
+      );
+
+      const fd4b = new MARKUP_FILE_DETECTOR();
+      fd4b.setCustomExtensions('.md, .markdown, .mdown, .mkd, .mdx');
+      assert(
+        'Dedup: all built-in extensions in custom list → no new patterns',
+        fd4b._patterns.length === 5,
+        `Expected 5, got ${fd4b._patterns.length}`
+      );
+
+      // ========================================
+      // Group 7: setCustomExtensions() — edge cases
+      // ========================================
+
+      const fd5 = new MARKUP_FILE_DETECTOR();
+
+      // Without dot prefix
+      fd5.setCustomExtensions('txt');
+      assert(
+        'Auto-dot: "txt" → ".txt" (adds dot prefix)',
+        fd5.isMarkdownUrl('file:///notes.txt')
+      );
+
+      // Case insensitivity
+      fd5.setCustomExtensions('.TXT');
+      assert(
+        'Case insensitive: ".TXT" matches ".txt"',
+        fd5.isMarkdownUrl('file:///notes.txt')
+      );
+
+      // Special regex characters
+      const fd6 = new MARKUP_FILE_DETECTOR();
+      fd6.setCustomExtensions('.c++');
+      assert(
+        'Regex escape: ".c++" is properly escaped',
+        fd6.isMarkdownUrl('file:///main.c++')
+      );
+      assert(
+        'Regex escape: ".c++" does not false-match ".cxx"',
+        !fd6.isMarkdownUrl('file:///main.cxx')
+      );
+
+      // Multiple calls replace custom but keep built-in
+      const fd7 = new MARKUP_FILE_DETECTOR();
+      fd7.setCustomExtensions('.txt');
+      assert('Multi-call pre: .txt matches', fd7.isMarkdownUrl('file:///a.txt'));
+      fd7.setCustomExtensions('.rst');
+      assert('Multi-call post: .rst matches after second call', fd7.isMarkdownUrl('file:///a.rst'));
+      assert('Multi-call post: .txt does NOT match after second call', !fd7.isMarkdownUrl('file:///a.txt'));
+      assert('Multi-call post: .md still matches', fd7.isMarkdownUrl('file:///a.md'));
+
+      // ========================================
+      // Group 8: setCustomExtensions() with HTTP URLs
+      // ========================================
+
+      const fd8 = new MARKUP_FILE_DETECTOR();
+      fd8.setCustomExtensions('.txt');
+
+      assert(
+        'HTTP URL: matches https://example.com/notes.txt',
+        fd8.isMarkdownUrl('https://example.com/notes.txt')
+      );
+
+      assert(
+        'HTTP URL: matches http://example.com/docs/readme.txt',
+        fd8.isMarkdownUrl('http://example.com/docs/readme.txt')
+      );
+
+      assert(
+        'HTTP URL: .html does NOT match',
+        !fd8.isMarkdownUrl('https://example.com/page.html')
+      );
+
+      // ========================================
+      // Group 9: StorageManager default fallback
+      // ========================================
+
+      const sm = new MARKUP_STORAGE_MANAGER();
+
+      assert(
+        'StorageManager: _getDefault("extensions") returns DEFAULTS.EXTENSIONS',
+        sm._getDefault('extensions') === '.md, .markdown, .mdown, .mkd, .mdx',
+        `Got: ${sm._getDefault('extensions')}`
+      );
+
+      // ========================================
+      // Group 10: Regression — existing isMarkdownUrl behavior
+      // ========================================
+
+      const fdReg = new MARKUP_FILE_DETECTOR();
+
+      assert(
+        'Regression: file:///docs/README.md → true',
+        fdReg.isMarkdownUrl('file:///docs/README.md')
+      );
+
+      assert(
+        'Regression: https://raw.githubusercontent.com/user/repo/main/README.md → true',
+        fdReg.isMarkdownUrl('https://raw.githubusercontent.com/user/repo/main/README.md')
+      );
+
+      assert(
+        'Regression: https://example.com/doc.md?v=2 → true',
+        fdReg.isMarkdownUrl('https://example.com/doc.md?v=2')
+      );
+
+      assert(
+        'Regression: https://example.com/page → false',
+        !fdReg.isMarkdownUrl('https://example.com/page')
+      );
+
+      assert(
+        'Regression: file:///docs/README.markdown → true',
+        fdReg.isMarkdownUrl('file:///docs/README.markdown')
+      );
+
+      assert(
+        'Regression: empty string → false',
+        !fdReg.isMarkdownUrl('')
+      );
+
+      assert(
+        'Regression: null → false',
+        !fdReg.isMarkdownUrl(null)
+      );
+
+      assert(
+        'Regression: getFileNameFromUrl unchanged',
+        fdReg.getFileNameFromUrl('file:///docs/README.md') === 'README.md'
+      );
+
+      assert(
+        'Regression: isMarkdownMime unchanged',
+        fdReg.isMarkdownMime('text/markdown')
+      );
+
+      assert(
+        'Regression: isMarkdownMime rejects text/html',
+        !fdReg.isMarkdownMime('text/html')
+      );
+
+      // Render results
+      renderResults();
+
+    })();
+  </script>
+</body>
+</html>
