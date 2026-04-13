@@ -695,22 +695,22 @@
 
       const EVENTS = (typeof MARKUP_CONSTANTS !== 'undefined') ? MARKUP_CONSTANTS.EVENTS : {};
 
-      // Ctrl+Shift+T → Toggle TOC
-      this._keyboardManager.register('ctrl+shift+t', () => {
+      // Alt+T → Toggle TOC
+      this._keyboardManager.register('alt+t', () => {
         if (this._emitter) {
           this._emitter.emit(EVENTS.TOC_TOGGLED || 'tocToggled');
         }
       });
 
-      // Ctrl+Shift+F → Toggle Search
-      this._keyboardManager.register('ctrl+shift+f', () => {
+      // Alt+F → Toggle Search
+      this._keyboardManager.register('alt+f', () => {
         if (this._emitter) {
           this._emitter.emit(EVENTS.SEARCH_TOGGLED || 'searchToggled');
         }
       });
 
-      // Ctrl+Shift+D → Cycle Theme
-      this._keyboardManager.register('ctrl+shift+d', () => {
+      // Alt+D → Cycle Theme
+      this._keyboardManager.register('alt+d', () => {
         if (this._themeManager) {
           const themes = this._themeManager.getAvailableThemes();
           const current = this._themeManager.getTheme();
@@ -720,8 +720,8 @@
         }
       });
 
-      // Ctrl+P → Print (intercept browser default)
-      this._keyboardManager.register('ctrl+p', () => {
+      // Alt+P → Print
+      this._keyboardManager.register('alt+p', () => {
         if (this._printManager) {
           this._printManager.preparePrintView();
         }
