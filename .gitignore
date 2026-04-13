@@ -1,0 +1,22 @@
+# Build output
+dist/
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+._*
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node (if added later)
+node_modules/
+package-lock.json
+
+# Gemini
+.gemini/
