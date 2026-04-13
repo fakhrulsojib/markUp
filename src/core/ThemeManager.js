@@ -106,13 +106,10 @@ class ThemeManager {
       return;
     }
 
-    // Remove all existing theme classes
     this._removeAllThemeClasses(root);
 
-    // Add the new theme class
     root.classList.add(`${this._themeClassPrefix}${themeName}`);
 
-    // Update current theme
     this._currentTheme = themeName;
 
     // Also update the body class for the body reset in content.css
@@ -121,12 +118,10 @@ class ThemeManager {
       if (!document.body.classList.contains('markup-body')) {
         document.body.classList.add('markup-body');
       }
-      // Remove all theme classes from body, then add the current one
       this._removeAllThemeClasses(document.body);
       document.body.classList.add(`${this._themeClassPrefix}${themeName}`);
     }
 
-    // Persist to storage (fire-and-forget, errors are non-fatal)
     try {
       this._storageManager.set('theme', themeName).catch((err) => {
         console.warn('ThemeManager: Failed to persist theme:', err);
@@ -135,7 +130,6 @@ class ThemeManager {
       console.warn('ThemeManager: Failed to persist theme:', err);
     }
 
-    // Emit theme change event
     if (this._eventEmitter) {
       try {
         this._eventEmitter.emit(this._EVENTS.THEME_CHANGED, {

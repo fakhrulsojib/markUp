@@ -46,7 +46,6 @@ class SearchController {
    * @returns {number} The number of matches found.
    */
   search(query, container) {
-    // Clear previous highlights
     this.clearHighlights();
 
     if (!query || !container) {
@@ -59,13 +58,11 @@ class SearchController {
 
     const searchStr = this._caseSensitive ? query : query.toLowerCase();
 
-    // Walk all text nodes in the container
     const walker = document.createTreeWalker(
       container,
       NodeFilter.SHOW_TEXT,
       {
         acceptNode: (node) => {
-          // Skip nodes inside <script>, <style>, or existing <mark> elements
           const parent = node.parentElement;
           if (!parent) return NodeFilter.FILTER_REJECT;
           const tag = parent.tagName.toLowerCase();
@@ -83,12 +80,10 @@ class SearchController {
       textNodes.push(currentNode);
     }
 
-    // Process text nodes and wrap matches
     for (const textNode of textNodes) {
       this._highlightInTextNode(textNode, searchStr);
     }
 
-    // Navigate to first match if any
     if (this._matches.length > 0) {
       this._currentIndex = 0;
       this._setActiveMatch(0);
@@ -107,12 +102,10 @@ class SearchController {
       return -1;
     }
 
-    // Remove active class from current
     if (this._currentIndex >= 0) {
       this._matches[this._currentIndex].classList.remove(`${this._prefix}-search-active`);
     }
 
-    // Advance to next (wrapping)
     this._currentIndex = (this._currentIndex + 1) % this._matches.length;
     this._setActiveMatch(this._currentIndex);
 
@@ -129,12 +122,10 @@ class SearchController {
       return -1;
     }
 
-    // Remove active class from current
     if (this._currentIndex >= 0) {
       this._matches[this._currentIndex].classList.remove(`${this._prefix}-search-active`);
     }
 
-    // Go to previous (wrapping)
     this._currentIndex = (this._currentIndex - 1 + this._matches.length) % this._matches.length;
     this._setActiveMatch(this._currentIndex);
 
@@ -151,7 +142,6 @@ class SearchController {
       if (parent) {
         const textNode = document.createTextNode(mark.textContent);
         parent.replaceChild(textNode, mark);
-        // Normalize adjacent text nodes
         parent.normalize();
       }
     }
@@ -196,7 +186,7 @@ class SearchController {
     let index = compareText.indexOf(searchStr, offset);
 
     if (index === -1) {
-      return; // No match in this text node
+      return;
     }
 
     const parent = textNode.parentNode;
@@ -204,12 +194,10 @@ class SearchController {
     let lastEnd = 0;
 
     while (index !== -1) {
-      // Add text before the match
       if (index > lastEnd) {
         fragment.appendChild(document.createTextNode(text.substring(lastEnd, index)));
       }
 
-      // Create <mark> element for the match
       const mark = document.createElement('mark');
       mark.className = `${this._prefix}-search-highlight`;
       mark.textContent = text.substring(index, index + searchStr.length);
@@ -220,12 +208,10 @@ class SearchController {
       index = compareText.indexOf(searchStr, lastEnd);
     }
 
-    // Add remaining text after last match
     if (lastEnd < text.length) {
       fragment.appendChild(document.createTextNode(text.substring(lastEnd)));
     }
 
-    // Replace the original text node with the fragment
     parent.replaceChild(fragment, textNode);
   }
 

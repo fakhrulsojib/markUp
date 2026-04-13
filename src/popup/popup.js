@@ -14,7 +14,6 @@
 'use strict';
 
 (function popupController() {
-  // --- Instances ---
 
   /** @type {StorageManager} */
   let storage = null;
@@ -22,13 +21,9 @@
   /** @type {MessageBus} */
   let messageBus = null;
 
-  // --- Constants ---
-
   const THEMES = (typeof MARKUP_CONSTANTS !== 'undefined')
     ? MARKUP_CONSTANTS.THEMES
     : { LIGHT: 'light', DARK: 'dark', SEPIA: 'sepia' };
-
-  // --- Initialization ---
 
   /**
    * Initialize the popup on DOMContentLoaded.
@@ -40,7 +35,6 @@
    * @private
    */
   async function _init() {
-    // Instantiate managers
     const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined')
       ? MARKUP_STORAGE_MANAGER
       : null;
@@ -55,30 +49,24 @@
       messageBus = new MessageBusClass();
     }
 
-    // Initialize Logger
     const LoggerClass = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
     if (LoggerClass) {
       await LoggerClass.init();
     }
 
-    // Apply theme to popup body FIRST (before any other rendering)
     await _applyThemeOnLoad();
 
-    // Load and display current state
     await _loadThemeState();
     await _loadToggleStates();
     await _loadRecentFiles();
     await _checkLastIntercepted();
 
-    // Wire event listeners
     _wireThemeButtons();
     _wireToggleSwitches();
     _wireOptionsLink();
     _wireClearRecentButton();
     _wireThemeRelay();
   }
-
-  // --- Theme Quick Switch ---
 
   /**
    * Load the current theme from storage and highlight the active button.
@@ -139,7 +127,6 @@
     _setActiveThemeButton(themeName);
     _applyThemeToBody(themeName);
 
-    // Persist to storage
     if (storage) {
       try {
         await storage.set('theme', themeName);
@@ -148,19 +135,15 @@
       }
     }
 
-    // Notify content script via MessageBus
     if (messageBus) {
       try {
         await messageBus.send('APPLY_THEME', { theme: themeName });
       } catch (err) {
-        // Content script may not be active — that's OK
         const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
         if (_Log) { _Log.debug('Popup', 'Theme change notification sent (content script may not be active).'); }
       }
     }
   }
-
-  // --- Toggle Switches ---
 
   /**
    * Load toggle states from storage.
@@ -177,10 +160,10 @@
       const interceptToggle = document.getElementById('markup-toggle-intercept');
 
       if (enabledToggle) {
-        enabledToggle.checked = enabled !== false; // Default: true
+        enabledToggle.checked = enabled !== false;
       }
       if (interceptToggle) {
-        interceptToggle.checked = interceptDownloads !== false; // Default: true
+        interceptToggle.checked = interceptDownloads !== false;
       }
     } catch (err) {
       console.warn('Popup: Failed to load toggle states:', err);
@@ -217,7 +200,6 @@
         console.warn('Popup: Failed to save enabled toggle:', err);
       }
     }
-    // Notify service worker + content scripts so state updates immediately
     if (messageBus) {
       try {
         await messageBus.send('APPLY_ENABLED', { enabled: isEnabled });
@@ -265,7 +247,6 @@
         _showInterceptNotice(response.filename);
       }
     } catch (err) {
-      // Service worker may not have the handler — that's OK
     }
   }
 
@@ -282,7 +263,6 @@
     noticeEl.classList.remove('hidden');
     noticeEl.classList.add('visible');
 
-    // Auto-dismiss after 5 seconds
     setTimeout(() => {
       noticeEl.classList.remove('visible');
       noticeEl.classList.add('fade-out');
@@ -292,8 +272,6 @@
       }, 300);
     }, 5000);
   }
-
-  // --- Recent Files ---
 
   /**
    * Load recent files from the service worker via MessageBus.
@@ -308,7 +286,6 @@
         _renderRecentFiles(response.files.slice(0, 5));
       }
     } catch (err) {
-      // Service worker may not have the handler yet — show empty state
       const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
       if (_Log) { _Log.debug('Popup', 'Could not load recent files:', err.message); }
     }
@@ -323,7 +300,6 @@
     const listEl = document.getElementById('markup-recent-list');
     if (!listEl) return;
 
-    // Clear existing content
     while (listEl.firstChild) {
       listEl.removeChild(listEl.firstChild);
     }
@@ -399,8 +375,6 @@
     });
   }
 
-  // --- Options Link ---
-
   /**
    * Wire the options page link.
    * @private
@@ -424,10 +398,6 @@
     }
   }
 
-  // --- Utility Functions ---
-
-  // --- Theme Application ---
-
   /**
    * Apply the persisted theme to the popup body on load.
    * Reads the theme from storage and applies the CSS class.
@@ -444,13 +414,11 @@
           themeName = savedTheme;
         }
       } catch (err) {
-        // Default to light on error
       }
     }
 
     _applyThemeToBody(themeName);
 
-    // Remove flash-prevention class
     document.body.classList.remove('markup-theme-loading');
   }
 

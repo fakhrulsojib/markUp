@@ -30,40 +30,28 @@
   }
   window.__MARKUP_INITIALIZED__ = true;
 
-  // Resolve Logger reference — may not be available if loaded before logger.js
   const _Logger = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
   if (_Logger) { _Logger.debug('ContentScript', 'Content script loaded on:', window.location.href); }
-
-  // --- Constants ---
 
   const PREFIX = (typeof MARKUP_CONSTANTS !== 'undefined')
     ? MARKUP_CONSTANTS.CSS_PREFIX
     : 'markup';
 
-  // --- Detection ---
-
   /**
    * Detect if the current page contains raw Markdown content.
-   * Checks document.contentType and the presence of a <pre> element
-   * (which browsers use to display plain text files).
    *
    * @returns {boolean} True if the page appears to contain raw Markdown.
    */
   function _isRawMarkdownPage() {
-    // Check content type — plain text files are served as text/plain
     const contentType = document.contentType || '';
     const isPlainText = contentType.startsWith('text/plain');
     const isMarkdownMime = contentType.startsWith('text/markdown') ||
                            contentType.startsWith('text/x-markdown');
 
-    // Check for pre element — browsers wrap plain text in <pre>
     const preElement = document.querySelector('pre');
     const hasPreContent = preElement && preElement.textContent.trim().length > 0;
 
-    // For file:// URLs, the browser wraps content in a <pre> tag
     const isFileUrl = window.location.protocol === 'file:';
-
-    // For https:// URLs (like raw.githubusercontent.com), check content type
     const isHttpsRaw = window.location.protocol === 'https:';
 
     if (isMarkdownMime) {
@@ -74,7 +62,6 @@
       return true;
     }
 
-    // Also detect if the body only contains a <pre> (common for raw text display)
     if (document.body && document.body.children.length <= 2 && hasPreContent) {
       return true;
     }
@@ -84,18 +71,15 @@
 
   /**
    * Extract raw Markdown text from the current page.
-   * Handles both <pre>-wrapped content and direct body text.
    *
    * @returns {string} The raw Markdown text, or empty string.
    */
   function _extractRawMarkdown() {
-    // Try to get content from <pre> element first (browser default for plain text)
     const preElement = document.querySelector('pre');
     if (preElement) {
       return preElement.textContent || '';
     }
 
-    // Fallback: body text content
     if (document.body) {
       return document.body.textContent || '';
     }
@@ -114,7 +98,6 @@
       return detector.getFileNameFromUrl(window.location.href);
     }
 
-    // Fallback: extract from URL path
     try {
       const path = window.location.pathname;
       const parts = path.split('/');
@@ -126,7 +109,6 @@
 
   /**
    * Set the page title based on rendered content.
-   * Uses the first <h1> text, or falls back to the filename.
    *
    * @param {HTMLElement} container - The rendered content container.
    */
@@ -139,34 +121,28 @@
       document.title = (fileName || 'Markdown') + ' — MarkUp';
     }
 
-    // Set favicon to the MarkUp logo
     _setFavicon();
   }
 
   /**
    * Set the page favicon to the MarkUp SVG icon.
-   * Removes any existing favicon first, then creates a new <link> element.
-   * Uses chrome.runtime.getURL() to resolve the extension-internal path.
    */
   function _setFavicon() {
     try {
-      // Remove any existing favicon links
       const existing = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
       existing.forEach(el => el.remove());
 
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
-      link.href = chrome.runtime.getURL('icons/icon-transparent.png');
+      link.href = chrome.runtime.getURL('icons/icon-32.png');
       document.head.appendChild(link);
     } catch (err) {
-      // Non-critical — skip silently
     }
   }
 
   /**
    * Show a styled error message when the pipeline fails.
-   * Ensures the page is never left blank.
    *
    * @param {Error} error - The error that occurred.
    * @param {string} rawMarkdown - The original raw Markdown (for fallback display).
@@ -178,14 +154,12 @@
       ? MARKUP_DOM_HELPERS
       : null;
 
-    // Clear body
     if (document.body) {
       while (document.body.firstChild) {
         document.body.removeChild(document.body.firstChild);
       }
     }
 
-    // Build error container
     const errorContainer = document.createElement('div');
     errorContainer.id = `${PREFIX}-error`;
 
@@ -208,7 +182,6 @@
     errorContainer.appendChild(message);
     errorContainer.appendChild(details);
 
-    // Inject basic error styles
     const errorStyles = `
       #${PREFIX}-error {
         max-width: 800px;
@@ -262,48 +235,27 @@
     document.body.appendChild(errorContainer);
   }
 
-  // --- MarkUpApp Orchestrator ---
-
   /**
    * MarkUpApp orchestrates all managers and UI components.
-   * This is the central controller for the content script.
-   *
    * @class MarkUpApp
    */
   class MarkUpApp {
     constructor() {
-      // Managers
-      /** @private */
       this._storage = null;
-      /** @private */
       this._emitter = null;
-      /** @private */
       this._themeManager = null;
-      /** @private */
       this._searchController = null;
-      /** @private */
       this._printManager = null;
-      /** @private */
       this._keyboardManager = null;
-      /** @private */
       this._messageBus = null;
 
-      // UI Components
-      /** @private */
       this._toolbar = null;
-      /** @private */
       this._tocPanel = null;
-      /** @private */
       this._searchBar = null;
-      /** @private */
       this._settingsPanel = null;
 
-      // Render state
-      /** @private */
       this._renderer = null;
-      /** @private */
       this._contentContainer = null;
-      /** @private */
       this._tocData = null;
     }
 
@@ -311,41 +263,30 @@
      * Run the full MarkUp pipeline.
      */
     async run() {
-      // Initialize Logger early (before any debug output)
       if (_Logger) {
         await _Logger.init();
       }
 
-      // Step 1: Detect raw Markdown content
       if (!_isRawMarkdownPage()) {
         if (_Logger) { _Logger.debug('ContentScript', 'Page does not contain raw Markdown. Skipping.'); }
         return;
       }
 
-      // Step 2: Extract raw Markdown text
       const rawMarkdown = _extractRawMarkdown();
 
-      // Edge case: Empty file
       if (!rawMarkdown.trim()) {
         this._showEmptyFileMessage();
         return;
       }
 
-      // Edge case: Binary file detection
       if (_isBinaryContent(rawMarkdown)) {
         this._showBinaryFileMessage();
         return;
       }
 
-      // --- Settings Gates (Step 9.1) ---
-
-      // Initialize StorageManager early for settings checks
       const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
       const earlyStorage = StorageManagerClass ? new StorageManagerClass() : null;
 
-      // Wire early MessageBus listeners for settings that can short-circuit the pipeline.
-      // These must be registered BEFORE the gates, otherwise re-enabling from popup
-      // won't reach tabs that were disabled (since _wireMessageBusListeners runs later).
       const MessageBusClass = (typeof MARKUP_MESSAGE_BUS !== 'undefined') ? MARKUP_MESSAGE_BUS : null;
       if (MessageBusClass) {
         try {
@@ -354,7 +295,6 @@
             window.location.reload();
             return { success: true };
           });
-          // APPLY_DEBUG_LOG — update Logger live (works even when pipeline short-circuits)
           earlyBus.listen('APPLY_DEBUG_LOG', (payload) => {
             if (_Logger && payload) {
               _Logger.setEnabled(payload.debugLog === true);
@@ -366,7 +306,6 @@
         }
       }
 
-      // Gate: enabled — skip rendering if disabled
       if (earlyStorage) {
         try {
           const enabled = await earlyStorage.get('enabled');
@@ -380,7 +319,6 @@
         }
       }
 
-      // Read cspStrict setting for Sanitizer configuration
       this._cspStrict = false;
       if (earlyStorage) {
         try {
@@ -391,10 +329,8 @@
         }
       }
 
-      // Store raw markdown for toggle feature
       this._rawMarkdown = rawMarkdown;
 
-      // Edge case: Very large file (>1MB)
       const LARGE_FILE_THRESHOLD = 1000000;
       let markdownToRender = rawMarkdown;
       this._isLargeFile = rawMarkdown.length > LARGE_FILE_THRESHOLD;
@@ -408,60 +344,43 @@
 
       if (_Logger) { _Logger.debug('ContentScript', `Detected Markdown content (${rawMarkdown.length} chars). Rendering...`); }
 
-      // Show loading spinner for large files
       if (rawMarkdown.length > 50000) {
         this._showLoadingSpinner();
       }
 
       try {
-        // Step 3: Initialize core managers
         this._initializeManagers();
 
-        // Step 4: Parse and render Markdown
         this._contentContainer = await this._parseAndRender(markdownToRender);
 
-        // Step 5: Apply syntax highlighting
         this._applySyntaxHighlighting(this._contentContainer);
 
-        // Step 6: Generate TOC data
         this._generateTocData(this._contentContainer);
 
-        // Step 7: Apply persisted theme
         await this._applyTheme();
 
-        // Step 8: Apply persisted typography settings
         await this._applyTypographySettings();
 
-        // Step 9: Mount UI components
         this._mountUIComponents();
 
-        // Step 10: Register keyboard shortcuts
         this._registerKeyboardShortcuts();
 
-        // Step 11: Wire inter-component events
         this._wireEvents();
 
-        // Step 11.5: Wire MessageBus listeners for live settings from popup/options
         this._wireMessageBusListeners();
 
-        // Step 12: Set page title
         _setPageTitle(this._contentContainer);
 
-        // Step 13: Add raw/rendered toggle
         this._addRawToggle();
 
-        // Step 14: Show large file warning if applicable
         if (this._isLargeFile) {
           this._showLargeFileWarning();
         }
 
-        // Remove loading spinner
         this._removeLoadingSpinner();
 
-        // Store references for external access
         this._storeGlobalReferences();
 
-        // Step 15: Track as recent file
         this._trackRecentFile();
 
         if (_Logger) { _Logger.debug('ContentScript', 'Rendering complete.'); }
@@ -472,12 +391,6 @@
       }
     }
 
-    // --- Initialization ---
-
-    /**
-     * Initialize core manager instances.
-     * @private
-     */
     _initializeManagers() {
       const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
       const EventEmitterClass = (typeof MARKUP_EVENT_EMITTER !== 'undefined') ? MARKUP_EVENT_EMITTER : null;
@@ -644,16 +557,9 @@
       }
     }
 
-    // --- UI Components ---
-
-    /**
-     * Mount all UI components.
-     * @private
-     */
     _mountUIComponents() {
       const mountTarget = document.body;
 
-      // Toolbar
       const ToolbarClass = (typeof MARKUP_TOOLBAR_COMPONENT !== 'undefined') ? MARKUP_TOOLBAR_COMPONENT : null;
       if (ToolbarClass && this._emitter) {
         try {
@@ -666,7 +572,6 @@
         }
       }
 
-      // TOC Panel
       const TocPanelClass = (typeof MARKUP_TOC_PANEL_COMPONENT !== 'undefined') ? MARKUP_TOC_PANEL_COMPONENT : null;
       if (TocPanelClass) {
         try {
@@ -680,7 +585,6 @@
         }
       }
 
-      // Search Bar
       const SearchBarClass = (typeof MARKUP_SEARCH_BAR_COMPONENT !== 'undefined') ? MARKUP_SEARCH_BAR_COMPONENT : null;
       if (SearchBarClass && this._searchController) {
         try {
@@ -691,7 +595,6 @@
         }
       }
 
-      // Settings Panel
       const SettingsPanelClass = (typeof MARKUP_SETTINGS_PANEL_COMPONENT !== 'undefined') ? MARKUP_SETTINGS_PANEL_COMPONENT : null;
       if (SettingsPanelClass && this._storage && this._themeManager && this._emitter) {
         try {
@@ -708,10 +611,6 @@
       }
     }
 
-    /**
-     * Register keyboard shortcuts.
-     * @private
-     */
     _registerKeyboardShortcuts() {
       if (!this._keyboardManager) {
         return;
@@ -719,21 +618,18 @@
 
       const EVENTS = (typeof MARKUP_CONSTANTS !== 'undefined') ? MARKUP_CONSTANTS.EVENTS : {};
 
-      // Alt+T → Toggle TOC
       this._keyboardManager.register('alt+t', () => {
         if (this._emitter) {
           this._emitter.emit(EVENTS.TOC_TOGGLED || 'tocToggled');
         }
       });
 
-      // Alt+F → Toggle Search
       this._keyboardManager.register('alt+f', () => {
         if (this._emitter) {
           this._emitter.emit(EVENTS.SEARCH_TOGGLED || 'searchToggled');
         }
       });
 
-      // Alt+D → Cycle Theme
       this._keyboardManager.register('alt+d', () => {
         if (this._themeManager) {
           const themes = this._themeManager.getAvailableThemes();
@@ -744,7 +640,6 @@
         }
       });
 
-      // Alt+P → Print
       this._keyboardManager.register('alt+p', () => {
         if (this._printManager) {
           this._printManager.preparePrintView();
@@ -754,10 +649,6 @@
       this._keyboardManager.enable();
     }
 
-    /**
-     * Wire inter-component events via EventEmitter.
-     * @private
-     */
     _wireEvents() {
       if (!this._emitter) {
         return;
@@ -765,17 +656,13 @@
 
       const EVENTS = (typeof MARKUP_CONSTANTS !== 'undefined') ? MARKUP_CONSTANTS.EVENTS : {};
 
-      // TOC Toggle
       this._emitter.on(EVENTS.TOC_TOGGLED || 'tocToggled', () => {
         if (this._tocPanel) {
           this._tocPanel.toggle();
         }
       });
 
-      // Theme Cycle (from toolbar button)
       this._emitter.on(EVENTS.THEME_CHANGED || 'themeChanged', (data) => {
-        // If data has a theme property, it came from ThemeManager (already applied)
-        // If no data, it came from toolbar button — cycle to next theme
         if (!data && this._themeManager) {
           const themes = this._themeManager.getAvailableThemes();
           const current = this._themeManager.getTheme();
@@ -783,28 +670,24 @@
           const next = themes[(idx + 1) % themes.length];
           this._themeManager.applyTheme(next);
 
-          // Sync the settings panel radio buttons
           if (this._settingsPanel && typeof this._settingsPanel.updateThemeSelection === 'function') {
             this._settingsPanel.updateThemeSelection(next);
           }
         }
       });
 
-      // Search Toggle
       this._emitter.on(EVENTS.SEARCH_TOGGLED || 'searchToggled', () => {
         if (this._searchBar) {
           this._searchBar.toggle();
         }
       });
 
-      // Print
       this._emitter.on(EVENTS.PRINT_REQUESTED || 'printRequested', () => {
         if (this._printManager) {
           this._printManager.preparePrintView();
         }
       });
 
-      // Settings Toggle
       this._emitter.on(EVENTS.SETTINGS_TOGGLED || 'settingsToggled', () => {
         if (this._settingsPanel) {
           this._settingsPanel.toggle();
@@ -812,12 +695,6 @@
       });
     }
 
-    /**
-     * Wire MessageBus listeners for live settings changes from popup/options.
-     * Enables real-time application of theme, font size, line height, and font family
-     * changes without requiring a page refresh.
-     * @private
-     */
     _wireMessageBusListeners() {
       if (!this._messageBus) {
         return;
@@ -825,11 +702,9 @@
 
       const self = this;
 
-      // Listen for APPLY_THEME from popup/options via service worker relay
       this._messageBus.listen('APPLY_THEME', (payload) => {
         if (payload && payload.theme && self._themeManager) {
           self._themeManager.applyTheme(payload.theme);
-          // Update settings panel radio buttons if open
           if (self._settingsPanel && typeof self._settingsPanel.updateThemeSelection === 'function') {
             self._settingsPanel.updateThemeSelection(payload.theme);
           }
@@ -837,7 +712,6 @@
         return { success: true };
       });
 
-      // Listen for APPLY_FONT_SIZE from popup/options via service worker relay
       this._messageBus.listen('APPLY_FONT_SIZE', (payload) => {
         if (payload && typeof payload.fontSize === 'number' && self._contentContainer) {
           self._contentContainer.style.setProperty('--markup-font-size-base', `${payload.fontSize}px`);
@@ -845,7 +719,6 @@
         return { success: true };
       });
 
-      // Listen for APPLY_LINE_HEIGHT from popup/options via service worker relay
       this._messageBus.listen('APPLY_LINE_HEIGHT', (payload) => {
         if (payload && typeof payload.lineHeight === 'number' && self._contentContainer) {
           self._contentContainer.style.setProperty('--markup-line-height', String(payload.lineHeight));
@@ -853,7 +726,6 @@
         return { success: true };
       });
 
-      // Listen for APPLY_FONT_FAMILY from popup/options via service worker relay
       this._messageBus.listen('APPLY_FONT_FAMILY', (payload) => {
         if (payload && typeof payload.fontFamily === 'string' && self._contentContainer) {
           if (payload.fontFamily === 'system-ui') {
@@ -865,30 +737,17 @@
         return { success: true };
       });
 
-      // Listen for APPLY_CSP_STRICT from popup/options via service worker relay
       this._messageBus.listen('APPLY_CSP_STRICT', (payload) => {
         if (payload && typeof payload.cspStrict === 'boolean') {
           const oldValue = self._cspStrict;
           self._cspStrict = payload.cspStrict;
           if (_Logger) { _Logger.debug('ContentScript', `CSP strict mode changed: ${oldValue} → ${payload.cspStrict}`); }
-          // Re-render with new sanitizer config
           self._reRender();
         }
         return { success: true };
       });
-
-      // Note: APPLY_ENABLED listeners are wired
-      // early in run() (before the settings gates) so they're active even when
-      // the pipeline short-circuits. They are NOT duplicated here.
     }
 
-    /**
-     * Re-render the current document with updated sanitizer settings.
-     * Called when cspStrict is toggled live. Preserves theme, typography,
-     * and UI components (toolbar, settings panel) but rebuilds the content
-     * container and TOC.
-     * @private
-     */
     async _reRender() {
       if (!this._rawMarkdown) {
         return;
@@ -897,30 +756,23 @@
       try {
         if (_Logger) { _Logger.debug('ContentScript', 'Re-rendering with updated CSP settings...'); }
 
-        // Re-parse and re-render (uses current this._cspStrict)
         this._contentContainer = await this._parseAndRender(this._rawMarkdown);
 
-        // Re-apply syntax highlighting
         this._applySyntaxHighlighting(this._contentContainer);
 
-        // Re-generate TOC data
         this._generateTocData(this._contentContainer);
 
-        // Re-apply theme to the new container
         if (this._themeManager) {
           const currentTheme = this._themeManager.getTheme();
           this._themeManager.applyTheme(currentTheme);
         }
 
-        // Re-apply typography settings
         await this._applyTypographySettings();
 
-        // Update TOC panel with new data if it exists
         if (this._tocPanel && this._tocData) {
           this._tocPanel.updateTocData(this._tocData);
         }
 
-        // Re-set page title
         _setPageTitle(this._contentContainer);
 
         if (_Logger) { _Logger.debug('ContentScript', 'Re-render complete.'); }
@@ -929,10 +781,6 @@
       }
     }
 
-    /**
-     * Store global references for external access and debugging.
-     * @private
-     */
     _storeGlobalReferences() {
       window.__MARKUP_RENDERER__ = this._renderer;
       window.__MARKUP_THEME_MANAGER__ = this._themeManager;
@@ -940,12 +788,6 @@
       window.__MARKUP_APP__ = this;
     }
 
-    // --- Recent File Tracking ---
-
-    /**
-     * Send ADD_RECENT_FILE message to service worker.
-     * @private
-     */
     _trackRecentFile() {
       try {
         const MessageBusClass = (typeof MARKUP_MESSAGE_BUS !== 'undefined') ? MARKUP_MESSAGE_BUS : null;

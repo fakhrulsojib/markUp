@@ -116,16 +116,13 @@ class HtmlRenderer extends Renderer {
       return;
     }
 
-    // Step 1: Sanitize
     let cleanHtml = htmlString;
     if (this._sanitizer) {
       cleanHtml = this._sanitizer.sanitize(htmlString);
     }
 
-    // Step 2: Clear existing content
     this.clear();
 
-    // Step 3: Parse the sanitized HTML via DOMParser
     const parsedDoc = this._domParser.parseFromString(cleanHtml, 'text/html');
     const parsedBody = parsedDoc.body;
 
@@ -134,7 +131,6 @@ class HtmlRenderer extends Renderer {
       return;
     }
 
-    // Step 4: Walk parsed DOM and clone nodes into container via importNode
     const fragment = document.createDocumentFragment();
     while (parsedBody.firstChild) {
       const importedNode = document.importNode(parsedBody.firstChild, true);
@@ -144,10 +140,8 @@ class HtmlRenderer extends Renderer {
 
     this._container.appendChild(fragment);
 
-    // Step 5: Append container to mount point
     const mountPoint = this.getContainer();
     if (mountPoint) {
-      // Clear the mount point before appending our container
       const helpers = (typeof MARKUP_DOM_HELPERS !== 'undefined')
         ? MARKUP_DOM_HELPERS
         : null;

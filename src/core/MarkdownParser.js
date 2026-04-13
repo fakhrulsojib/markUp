@@ -59,7 +59,6 @@ class MarkdownParser {
    * @private
    */
   _initializeParser() {
-    // Get a reference to the marked library
     const markedLib = (typeof marked !== 'undefined') ? marked : null;
 
     if (!markedLib) {
@@ -90,7 +89,6 @@ class MarkdownParser {
       return '';
     }
 
-    // Check document size limit
     const maxSize = (typeof MARKUP_CONSTANTS !== 'undefined')
       ? MARKUP_CONSTANTS.MAX_DOCUMENT_SIZE
       : 500000;

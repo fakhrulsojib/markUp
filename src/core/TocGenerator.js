@@ -52,23 +52,19 @@ class TocGenerator {
       return [];
     }
 
-    // Reset state
     this._headings = [];
     this._tree = [];
     this._slugCounts.clear();
 
-    // Find all headings in the container
     const headingElements = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
 
     for (const heading of headingElements) {
       const level = parseInt(heading.tagName.charAt(1), 10);
       const text = heading.textContent.trim();
 
-      // Assign unique ID if missing
       if (!heading.id) {
         heading.id = this._generateSlug(text);
       } else {
-        // Track existing IDs to avoid collisions
         this._slugCounts.set(heading.id, (this._slugCounts.get(heading.id) || 0) + 1);
       }
 
@@ -79,7 +75,6 @@ class TocGenerator {
       });
     }
 
-    // Build the nested tree from the flat list
     this._tree = this._buildTree(this._headings);
 
     return this._headings;

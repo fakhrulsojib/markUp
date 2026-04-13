@@ -40,11 +40,9 @@ class PrintManager {
     /** @private @type {HTMLElement[]} */
     this._hiddenElements = [];
 
-    // Bound handler for afterprint
     /** @private */
     this._boundOnAfterPrint = this._onAfterPrint.bind(this);
 
-    // Register afterprint listener
     window.addEventListener('afterprint', this._boundOnAfterPrint);
   }
 
@@ -63,16 +61,13 @@ class PrintManager {
 
     this._isPrintMode = true;
 
-    // Add print mode class
     const root = this._resolveContentContainer();
     if (root) {
       root.classList.add(`${this._prefix}-print-mode`);
     }
 
-    // Hide UI components
     this._hideUIComponents();
 
-    // Trigger print dialog
     window.print();
   }
 
@@ -88,13 +83,11 @@ class PrintManager {
       return;
     }
 
-    // Remove print mode class
     const root = this._resolveContentContainer();
     if (root) {
       root.classList.remove(`${this._prefix}-print-mode`);
     }
 
-    // Restore hidden elements
     this._restoreUIComponents();
 
     this._isPrintMode = false;

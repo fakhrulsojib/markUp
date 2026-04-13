@@ -102,17 +102,14 @@ class SyntaxHighlighter {
       return;
     }
 
-    // Check if already highlighted
     if (codeElement.dataset.highlighted === 'yes') {
       return;
     }
 
-    // Detect language from class name
     const language = this._detectLanguage(codeElement);
 
     try {
       if (language && this._supportedLanguages.has(language)) {
-        // Highlight with specified language
         const result = this._hljs.highlight(codeElement.textContent, {
           language: language,
           ignoreIllegals: true,
@@ -122,7 +119,6 @@ class SyntaxHighlighter {
         codeElement.dataset.highlighted = 'yes';
         codeElement.dataset.language = language;
       } else if (this._autoDetect) {
-        // Auto-detect language
         const result = this._hljs.highlightAuto(codeElement.textContent);
         codeElement.innerHTML = result.value;
         codeElement.classList.add('hljs');
