@@ -1052,7 +1052,7 @@ classDiagram
 
 > ✅ **Verify:** Disable MarkUp in Options → open a `.md` file → raw text visible with banner. Re-enable → renders immediately.
 
-#### Step 9.2 — Wire `debugLog` Toggle
+#### Step 9.2 — Wire `debugLog` Toggle ✅ Done
 
 - Create a `Logger` utility class or module (`src/utils/logger.js`):
   - `Logger.debug(context, ...args)` — only logs when `debugLog` is `true` in storage.
