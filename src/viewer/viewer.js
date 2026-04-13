@@ -19,15 +19,11 @@
 
 (function viewerController() {
 
-  // --- Constants ---
-
   const PREFIX = (typeof MARKUP_CONSTANTS !== 'undefined')
     ? MARKUP_CONSTANTS.CSS_PREFIX
     : 'markup';
 
   const _Logger = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
-
-  // --- State ---
 
   let _storage = null;
   let _emitter = null;
@@ -47,21 +43,13 @@
   let _originalUrl = '';
   let _originalFilename = '';
 
-  // --- Entry Point ---
-
   document.addEventListener('DOMContentLoaded', _init);
 
-  /**
-   * Main initialization.
-   * @private
-   */
   async function _init() {
-    // Initialize Logger
     if (_Logger) {
       await _Logger.init();
     }
 
-    // Parse query parameters
     const params = new URLSearchParams(window.location.search);
     _originalUrl = params.get('url') || '';
     _originalFilename = params.get('filename') || '';
@@ -73,10 +61,8 @@
 
     if (_Logger) { _Logger.debug('Viewer', 'Loading:', _originalUrl, 'Filename:', _originalFilename); }
 
-    // Show loading spinner
     _showLoadingSpinner(_originalFilename);
 
-    // Fetch content
     try {
       const response = await fetch(_originalUrl);
 
@@ -97,24 +83,20 @@
 
       const text = await response.text();
 
-      // Edge case: Empty file
       if (!text.trim()) {
         _removeLoadingSpinner();
         _showEmptyFile();
         return;
       }
 
-      // Edge case: Binary file
       if (_isBinaryContent(text)) {
         _removeLoadingSpinner();
         _showBinaryError();
         return;
       }
 
-      // Store raw markdown
       _rawMarkdown = text;
 
-      // Edge case: Large file (>1MB)
       const LARGE_FILE_THRESHOLD = 1000000;
       let markdownToRender = text;
       let isLargeFile = text.length > LARGE_FILE_THRESHOLD;
@@ -123,24 +105,18 @@
         markdownToRender = lines.slice(0, 500).join('\n');
       }
 
-      // Run the rendering pipeline
       await _runPipeline(markdownToRender);
 
-      // Show large file warning if needed
       if (isLargeFile) {
         _showLargeFileWarning(text);
       }
 
-      // Remove loading spinner
       _removeLoadingSpinner();
 
-      // Set page title
       _setPageTitle();
 
-      // Add "Save file" button
       _addSaveButton();
 
-      // Track as recent file
       _trackRecentFile();
 
       if (_Logger) { _Logger.debug('Viewer', 'Rendering complete.'); }
@@ -149,7 +125,6 @@
       _removeLoadingSpinner();
       if (_Logger) { _Logger.debug('Viewer', 'Fetch error:', err.message); }
 
-      // TypeError usually indicates CORS block or network failure
       const isCORS = err instanceof TypeError;
       const heading = isCORS
         ? 'Blocked by cross-origin policy'
@@ -163,30 +138,17 @@
     }
   }
 
-  // --- Rendering Pipeline ---
-
-  /**
-   * Run the full Markdown rendering pipeline.
-   * Mirrors the content script pipeline but without detection logic.
-   *
-   * @param {string} markdown - The raw Markdown text to render.
-   * @private
-   */
   async function _runPipeline(markdown) {
-    // Initialize managers
     _initializeManagers();
 
-    // Read cspStrict setting
     if (_storage) {
       try {
         const cspStrictVal = await _storage.get('cspStrict');
         _cspStrict = cspStrictVal === true;
       } catch (err) {
-        // Default: false
       }
     }
 
-    // Parse Markdown → HTML
     const MarkdownParserClass = (typeof MARKUP_MARKDOWN_PARSER !== 'undefined') ? MARKUP_MARKDOWN_PARSER : null;
     if (!MarkdownParserClass) {
       throw new Error('MarkdownParser class not available.');
@@ -199,7 +161,6 @@
       throw new Error('Markdown parser returned empty HTML.');
     }
 
-    // Render HTML safely
     const HtmlRendererClass = (typeof MARKUP_HTML_RENDERER !== 'undefined') ? MARKUP_HTML_RENDERER : null;
     if (!HtmlRendererClass) {
       throw new Error('HtmlRenderer class not available.');
@@ -215,14 +176,12 @@
     renderer.render(htmlString);
     _contentContainer = renderer.getContentContainer();
 
-    // Syntax highlighting
     const SyntaxHighlighterClass = (typeof MARKUP_SYNTAX_HIGHLIGHTER !== 'undefined') ? MARKUP_SYNTAX_HIGHLIGHTER : null;
     if (SyntaxHighlighterClass) {
       const highlighter = new SyntaxHighlighterClass({ autoDetect: true });
       highlighter.highlightAll(_contentContainer);
     }
 
-    // Generate TOC
     const TocGeneratorClass = (typeof MARKUP_TOC_GENERATOR !== 'undefined') ? MARKUP_TOC_GENERATOR : null;
     if (TocGeneratorClass) {
       const tocGenerator = new TocGeneratorClass();
@@ -234,7 +193,6 @@
       };
     }
 
-    // Apply theme
     const ThemeManagerClass = (typeof MARKUP_THEME_MANAGER !== 'undefined') ? MARKUP_THEME_MANAGER : null;
     if (ThemeManagerClass && _storage) {
       try {
@@ -245,28 +203,17 @@
       }
     }
 
-    // Apply typography settings
     await _applyTypographySettings();
 
-    // Mount UI components
     _mountUIComponents();
 
-    // Register keyboard shortcuts
     _registerKeyboardShortcuts();
 
-    // Wire inter-component events
     _wireEvents();
 
-    // Wire MessageBus listeners for live settings
     _wireMessageBusListeners();
   }
 
-  // --- Manager Initialization ---
-
-  /**
-   * Initialize core managers.
-   * @private
-   */
   function _initializeManagers() {
     const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
     const EventEmitterClass = (typeof MARKUP_EVENT_EMITTER !== 'undefined') ? MARKUP_EVENT_EMITTER : null;
@@ -283,10 +230,6 @@
     if (MessageBusClass) _messageBus = new MessageBusClass();
   }
 
-  /**
-   * Apply persisted typography settings.
-   * @private
-   */
   async function _applyTypographySettings() {
     if (!_storage || !_contentContainer) return;
 
@@ -310,16 +253,9 @@
     }
   }
 
-  // --- UI Components ---
-
-  /**
-   * Mount all UI components (toolbar, TOC, search, settings).
-   * @private
-   */
   function _mountUIComponents() {
     const mountTarget = document.body;
 
-    // Toolbar
     const ToolbarClass = (typeof MARKUP_TOOLBAR_COMPONENT !== 'undefined') ? MARKUP_TOOLBAR_COMPONENT : null;
     if (ToolbarClass && _emitter) {
       try {
@@ -330,7 +266,6 @@
       }
     }
 
-    // TOC Panel
     const TocPanelClass = (typeof MARKUP_TOC_PANEL_COMPONENT !== 'undefined') ? MARKUP_TOC_PANEL_COMPONENT : null;
     if (TocPanelClass) {
       try {
@@ -344,7 +279,6 @@
       }
     }
 
-    // Search Bar
     const SearchBarClass = (typeof MARKUP_SEARCH_BAR_COMPONENT !== 'undefined') ? MARKUP_SEARCH_BAR_COMPONENT : null;
     if (SearchBarClass && _searchController) {
       try {
@@ -355,7 +289,6 @@
       }
     }
 
-    // Settings Panel
     const SettingsPanelClass = (typeof MARKUP_SETTINGS_PANEL_COMPONENT !== 'undefined') ? MARKUP_SETTINGS_PANEL_COMPONENT : null;
     if (SettingsPanelClass && _storage && _themeManager && _emitter) {
       try {
@@ -367,10 +300,6 @@
     }
   }
 
-  /**
-   * Register keyboard shortcuts.
-   * @private
-   */
   function _registerKeyboardShortcuts() {
     if (!_keyboardManager) return;
 
@@ -401,10 +330,6 @@
     _keyboardManager.enable();
   }
 
-  /**
-   * Wire inter-component events.
-   * @private
-   */
   function _wireEvents() {
     if (!_emitter) return;
 
@@ -440,16 +365,9 @@
     });
   }
 
-  /**
-   * Wire MessageBus listeners for live settings from popup/options.
-   * Extension pages receive messages via chrome.runtime.onMessage (which
-   * MessageBus.listen() already uses).
-   * @private
-   */
   function _wireMessageBusListeners() {
     if (!_messageBus) return;
 
-    // Listen for APPLY_THEME
     _messageBus.listen('APPLY_THEME', (payload) => {
       if (payload && payload.theme && _themeManager) {
         _themeManager.applyTheme(payload.theme);
@@ -460,7 +378,6 @@
       return { success: true };
     });
 
-    // Listen for APPLY_FONT_SIZE
     _messageBus.listen('APPLY_FONT_SIZE', (payload) => {
       if (payload && typeof payload.fontSize === 'number' && _contentContainer) {
         _contentContainer.style.setProperty('--markup-font-size-base', payload.fontSize + 'px');
@@ -468,7 +385,6 @@
       return { success: true };
     });
 
-    // Listen for APPLY_LINE_HEIGHT
     _messageBus.listen('APPLY_LINE_HEIGHT', (payload) => {
       if (payload && typeof payload.lineHeight === 'number' && _contentContainer) {
         _contentContainer.style.setProperty('--markup-line-height', String(payload.lineHeight));
@@ -476,7 +392,6 @@
       return { success: true };
     });
 
-    // Listen for APPLY_FONT_FAMILY
     _messageBus.listen('APPLY_FONT_FAMILY', (payload) => {
       if (payload && typeof payload.fontFamily === 'string' && _contentContainer) {
         if (payload.fontFamily === 'system-ui') {
@@ -488,17 +403,14 @@
       return { success: true };
     });
 
-    // Listen for APPLY_CSP_STRICT
     _messageBus.listen('APPLY_CSP_STRICT', (payload) => {
       if (payload && typeof payload.cspStrict === 'boolean') {
         _cspStrict = payload.cspStrict;
-        // Re-render with new sanitizer config
         _reRender();
       }
       return { success: true };
     });
 
-    // Listen for APPLY_DEBUG_LOG
     _messageBus.listen('APPLY_DEBUG_LOG', (payload) => {
       if (_Logger && payload) {
         _Logger.setEnabled(payload.debugLog === true);
@@ -507,10 +419,6 @@
     });
   }
 
-  /**
-   * Re-render the document with updated settings (e.g., CSP toggle).
-   * @private
-   */
   async function _reRender() {
     if (!_rawMarkdown) return;
 
@@ -535,14 +443,12 @@
       renderer.render(htmlString);
       _contentContainer = renderer.getContentContainer();
 
-      // Re-highlight
       const SyntaxHighlighterClass = (typeof MARKUP_SYNTAX_HIGHLIGHTER !== 'undefined') ? MARKUP_SYNTAX_HIGHLIGHTER : null;
       if (SyntaxHighlighterClass) {
         const highlighter = new SyntaxHighlighterClass({ autoDetect: true });
         highlighter.highlightAll(_contentContainer);
       }
 
-      // Re-generate TOC
       const TocGeneratorClass = (typeof MARKUP_TOC_GENERATOR !== 'undefined') ? MARKUP_TOC_GENERATOR : null;
       if (TocGeneratorClass) {
         const tocGenerator = new TocGeneratorClass();
@@ -557,7 +463,6 @@
         }
       }
 
-      // Re-apply theme
       if (_themeManager) {
         _themeManager.applyTheme(_themeManager.getTheme());
       }
@@ -570,12 +475,6 @@
     }
   }
 
-  // --- Page Title ---
-
-  /**
-   * Set the page title from the rendered content or filename.
-   * @private
-   */
   function _setPageTitle() {
     if (_contentContainer) {
       const firstH1 = _contentContainer.querySelector('h1');
@@ -588,12 +487,6 @@
     document.title = name.replace(/\.[^.]+$/, '') + ' — MarkUp';
   }
 
-  // --- Save Button ---
-
-  /**
-   * Add a "Save file" button (bottom-left, like the raw toggle in content script).
-   * @private
-   */
   function _addSaveButton() {
     if (!_rawMarkdown) return;
 
@@ -605,9 +498,6 @@
 
     btn.addEventListener('click', function _onSaveClick() {
       try {
-        // Create a Blob from the already-fetched content.
-        // This avoids re-downloading (original URL may have expired)
-        // and avoids re-triggering download interception.
         const blob = new Blob([_rawMarkdown], { type: 'text/markdown;charset=utf-8' });
         const blobUrl = URL.createObjectURL(blob);
 
@@ -619,7 +509,6 @@
         a.click();
         document.body.removeChild(a);
 
-        // Revoke after a short delay to ensure the download starts
         setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       } catch (err) {
         console.warn('MarkUp Viewer: Save failed:', err);
@@ -629,12 +518,6 @@
     document.body.appendChild(btn);
   }
 
-  // --- Recent File Tracking ---
-
-  /**
-   * Track this file as a recent file via MessageBus.
-   * @private
-   */
   function _trackRecentFile() {
     if (!_messageBus) return;
 

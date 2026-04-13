@@ -14,7 +14,6 @@
 'use strict';
 
 (function optionsController() {
-  // --- Instances ---
 
   /** @type {StorageManager} */
   let storage = null;
@@ -22,13 +21,9 @@
   /** @type {MessageBus} */
   let messageBus = null;
 
-  // --- Constants ---
-
   const DEFAULTS = (typeof MARKUP_CONSTANTS !== 'undefined')
     ? MARKUP_CONSTANTS.DEFAULTS
     : { THEME: 'light', FONT_SIZE: 16, LINE_HEIGHT: 1.6, FONT_FAMILY: 'system-ui' };
-
-  // --- Initialization ---
 
   document.addEventListener('DOMContentLoaded', _init);
 
@@ -37,7 +32,6 @@
    * @private
    */
   async function _init() {
-    // Instantiate managers
     const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined')
       ? MARKUP_STORAGE_MANAGER
       : null;
@@ -55,26 +49,20 @@
       messageBus = new MessageBusClass();
     }
 
-    // Initialize Logger
     if (LoggerClass) {
       await LoggerClass.init();
     }
 
-    // Apply theme to options page body FIRST (before any other rendering)
     await _applyThemeOnLoad();
 
-    // Load all current settings
     await _loadAllSettings();
 
-    // Wire event listeners
     _wireAppearanceControls();
     _wireBehaviorControls();
     _wireAdvancedControls();
     _wireResetButton();
     _wireThemeRelay();
   }
-
-  // --- Load Settings ---
 
   /**
    * Load all settings from storage and populate the UI.
@@ -84,7 +72,6 @@
     if (!storage) return;
 
     try {
-      // Appearance
       const theme = await storage.get('theme') || DEFAULTS.THEME;
       const fontSize = await storage.get('fontSize') || DEFAULTS.FONT_SIZE;
       const lineHeight = await storage.get('lineHeight') || DEFAULTS.LINE_HEIGHT;
@@ -95,7 +82,6 @@
       _setRangeValue('markup-opt-lineheight', lineHeight, 'markup-opt-lineheight-value', v => `${v}`);
       _setSelectValue('markup-opt-fontfamily', fontFamily);
 
-      // Behavior
       const enabled = await storage.get('enabled');
       const interceptDownloads = await storage.get('interceptDownloads');
       const extensions = await storage.get('extensions');
@@ -104,12 +90,11 @@
       if (enabledEl) enabledEl.checked = enabled !== false;
 
       const interceptEl = document.getElementById('markup-opt-intercept-downloads');
-      if (interceptEl) interceptEl.checked = interceptDownloads !== false; // Default: true
+      if (interceptEl) interceptEl.checked = interceptDownloads !== false;
 
       const extensionsEl = document.getElementById('markup-opt-extensions');
       if (extensionsEl && extensions) extensionsEl.value = extensions;
 
-      // Advanced
       const cspStrict = await storage.get('cspStrict');
       const debugLog = await storage.get('debugLog');
 
@@ -124,42 +109,34 @@
     }
   }
 
-  // --- Appearance Controls ---
-
   /**
    * Wire appearance control events.
    * @private
    */
   function _wireAppearanceControls() {
-    // Theme
     _wireSelect('markup-opt-theme', async (value) => {
       await _saveSetting('theme', value);
       _applyThemeToBody(value);
       await _notifyContentScript('APPLY_THEME', { theme: value });
     });
 
-    // Font size
     _wireRange('markup-opt-fontsize', 'markup-opt-fontsize-value', v => `${v}`, async (value) => {
       const numValue = parseInt(value, 10);
       await _saveSetting('fontSize', numValue);
       await _notifyContentScript('APPLY_FONT_SIZE', { fontSize: numValue });
     });
 
-    // Line height
     _wireRange('markup-opt-lineheight', 'markup-opt-lineheight-value', v => `${v}`, async (value) => {
       const numValue = parseFloat(value);
       await _saveSetting('lineHeight', numValue);
       await _notifyContentScript('APPLY_LINE_HEIGHT', { lineHeight: numValue });
     });
 
-    // Font family
     _wireSelect('markup-opt-fontfamily', async (value) => {
       await _saveSetting('fontFamily', value);
       await _notifyContentScript('APPLY_FONT_FAMILY', { fontFamily: value });
     });
   }
-
-  // --- Behavior Controls ---
 
   /**
    * Wire behavior control events.
@@ -185,8 +162,6 @@
     }
   }
 
-  // --- Advanced Controls ---
-
   /**
    * Wire advanced control events.
    * @private
@@ -202,8 +177,6 @@
       await _notifyContentScript('APPLY_DEBUG_LOG', { debugLog: checked });
     });
   }
-
-  // --- Reset ---
 
   /**
    * Wire the reset button.
@@ -235,7 +208,6 @@
       await storage.set('cspStrict', false);
       await storage.set('debugLog', false);
 
-      // Reload UI
       await _loadAllSettings();
       _applyThemeToBody(DEFAULTS.THEME);
       _showSaveStatus();
@@ -243,8 +215,6 @@
       console.warn('Options: Failed to reset settings:', err);
     }
   }
-
-  // --- Helpers ---
 
   /**
    * Save a single setting to storage and show feedback.
@@ -273,7 +243,6 @@
     try {
       await messageBus.send(action, payload);
     } catch (err) {
-      // Content script may not be listening — that's OK
       const LoggerRef = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
       if (LoggerRef) {
         LoggerRef.debug('Options', `Notification ${action} sent.`);
@@ -282,16 +251,7 @@
   }
 
   /**
-   * Show the "Saved" status bar briefly.
-   * @private
-   */
-
-  // --- Theme Application ---
-
-  /**
    * Apply the persisted theme to the options page body on load.
-   * Reads the theme from storage and applies the CSS class.
-   * Also removes the flash-prevention loading class.
    * @private
    */
   async function _applyThemeOnLoad() {
@@ -304,19 +264,16 @@
           themeName = savedTheme;
         }
       } catch (err) {
-        // Default to light on error
       }
     }
 
     _applyThemeToBody(themeName);
 
-    // Remove flash-prevention class
     document.body.classList.remove('markup-theme-loading');
   }
 
   /**
    * Apply a theme class to the options page body.
-   * Removes all existing theme classes and adds the new one.
    * @param {string} themeName - The theme to apply.
    * @private
    */

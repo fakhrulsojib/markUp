@@ -4,10 +4,6 @@
  * Event-driven service worker for the MarkUp Chrome Extension.
  * Manifest V3 compliant — no persistent background page.
  *
- * Responsibilities:
- * - Lifecycle management (install, update)
- * - Dynamic content script injection for Markdown URLs not covered by static matches
- * - Message routing via MessageBus
  */
 
 // Import core modules
@@ -95,11 +91,6 @@ chrome.runtime.onInstalled.addListener((details) => {
  */
 const injectedTabs = new Set();
 
-/**
- * Listen for tab URL changes. When a tab navigates to a Markdown URL
- * that is NOT covered by the static content_scripts matches,
- * dynamically inject the content script.
- */
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // Only act when the page has completed loading
   if (changeInfo.status !== 'complete' || !tab.url) {
@@ -201,7 +192,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
     }
   );
-  })(); // End of async autoDetect IIFE
+  })();
 });
 
 /**
@@ -268,7 +259,6 @@ messageBus.listen('ADD_RECENT_FILE', async (payload, sender) => {
  * Handle 'APPLY_THEME' action — relay to active tabs (from popup/options to content script).
  */
 messageBus.listen('APPLY_THEME', async (payload, sender) => {
-  // Relay theme change to all Markdown tabs
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -362,9 +352,7 @@ messageBus.listen('APPLY_ENABLED', async (payload, sender) => {
  * Handle 'APPLY_DEBUG_LOG' action — update own Logger state and relay to active Markdown tabs.
  */
 messageBus.listen('APPLY_DEBUG_LOG', async (payload, sender) => {
-  // Update service worker's own Logger state
   MARKUP_LOGGER.setEnabled(payload?.debugLog === true);
-  // Relay to all Markdown tabs
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -373,22 +361,18 @@ messageBus.listen('APPLY_DEBUG_LOG', async (payload, sender) => {
       }
     }
   } catch (err) {
-    // Silent — don't log relay attempts for the logger itself
   }
   return { success: true };
 });
 
 /**
  * Handle 'APPLY_EXTENSIONS' action — update FileDetector patterns and relay to tabs.
- * Broadcasts to ALL tabs (not filtered) since new extensions may match previously-unmatched tabs.
  */
 messageBus.listen('APPLY_EXTENSIONS', async (payload, sender) => {
-  // Update service worker's own FileDetector patterns
   if (payload && typeof payload.extensions === 'string') {
     fileDetector.setCustomExtensions(payload.extensions);
     MARKUP_LOGGER.debug('ServiceWorker', 'Custom extensions updated:', payload.extensions);
   }
-  // Relay to all open tabs (future-proofing for content script awareness)
   try {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
@@ -423,7 +407,6 @@ messageBus.listen('APPLY_CSP_STRICT', async (payload, sender) => {
 
 /**
  * Handle 'APPLY_INTERCEPT_DOWNLOADS' action — consumed locally by service worker.
- * No relay needed — the setting is used only in the download listener.
  */
 messageBus.listen('APPLY_INTERCEPT_DOWNLOADS', async (payload, sender) => {
   MARKUP_LOGGER.debug('ServiceWorker', 'Intercept downloads setting updated:', payload?.interceptDownloads);
@@ -432,7 +415,6 @@ messageBus.listen('APPLY_INTERCEPT_DOWNLOADS', async (payload, sender) => {
 
 /**
  * Handle 'GET_LAST_INTERCEPTED' action — returns the most recently intercepted download info.
- * Used by the popup to show ephemeral notification.
  */
 messageBus.listen('GET_LAST_INTERCEPTED', (payload, sender) => {
   if (_lastIntercepted && (Date.now() - _lastIntercepted.timestamp < 30000)) {
@@ -452,32 +434,21 @@ let _lastIntercepted = null;
 
 /**
  * Intercept Markdown file downloads and redirect to the viewer page.
- * Uses chrome.downloads.onDeterminingFilename to detect .md downloads
- * before they hit disk.
  */
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
-  // Always suggest immediately (required synchronously by Chrome API)
   suggest();
-
-  // Async handling — cancel, cleanup, and redirect if appropriate
   _handleMarkdownDownload(downloadItem);
 });
 
 /**
  * Handle a potential Markdown download interception.
- * Checks filename, settings, and redirects to viewer if appropriate.
- *
- * @param {chrome.downloads.DownloadItem} downloadItem
- * @private
  */
 async function _handleMarkdownDownload(downloadItem) {
-  // Skip blob: and data: URLs — these are extension-initiated saves (e.g., viewer "Save file" button)
   const downloadUrl = downloadItem.finalUrl || downloadItem.url || '';
   if (downloadUrl.startsWith('blob:') || downloadUrl.startsWith('data:')) {
     return;
   }
 
-  // Skip downloads initiated by this extension (prevents re-interception loop)
   if (downloadItem.byExtensionId === chrome.runtime.id) {
     return;
   }
@@ -485,7 +456,6 @@ async function _handleMarkdownDownload(downloadItem) {
   const filename = downloadItem.filename || '';
   if (!filename) return;
 
-  // Build synthetic URL for FileDetector pattern matching
   const syntheticUrl = 'file:///test/' + filename.split('/').pop().split('\\').pop();
   if (!fileDetector.isMarkdownUrl(syntheticUrl)) {
     return;
@@ -493,7 +463,6 @@ async function _handleMarkdownDownload(downloadItem) {
 
   MARKUP_LOGGER.debug('ServiceWorker', 'Markdown download detected:', filename);
 
-  // Check intercept setting
   try {
     const interceptEnabled = await settingsStorage.get('interceptDownloads');
     if (interceptEnabled === false) {
@@ -501,10 +470,8 @@ async function _handleMarkdownDownload(downloadItem) {
       return;
     }
   } catch (err) {
-    // Default: intercept (fail-open to the feature)
   }
 
-  // Check master enabled setting
   try {
     const enabled = await settingsStorage.get('enabled');
     if (enabled === false) {
@@ -512,44 +479,36 @@ async function _handleMarkdownDownload(downloadItem) {
       return;
     }
   } catch (err) {
-    // Default: intercept
   }
 
-  // Step 1: Cancel the download
   try {
     await chrome.downloads.cancel(downloadItem.id);
   } catch (err) {
     MARKUP_LOGGER.debug('ServiceWorker', 'Download cancel race:', err.message);
   }
 
-  // Step 2: Delete partial file from disk (must be before erase)
   try {
     await chrome.downloads.removeFile(downloadItem.id);
   } catch (err) {
     MARKUP_LOGGER.debug('ServiceWorker', 'Partial file cleanup:', err.message);
   }
 
-  // Step 3: Remove from download bar/history
   try {
     await chrome.downloads.erase({ id: downloadItem.id });
   } catch (err) {
     MARKUP_LOGGER.debug('ServiceWorker', 'Download erase:', err.message);
   }
 
-  // Open viewer
   const displayFilename = filename.split('/').pop().split('\\').pop();
-  // downloadUrl already declared at top of function
   const viewerUrl = chrome.runtime.getURL('viewer/viewer.html')
     + '?url=' + encodeURIComponent(downloadUrl)
     + '&filename=' + encodeURIComponent(displayFilename);
 
   chrome.tabs.create({ url: viewerUrl });
 
-  // Track as recent file
   const titleWithoutExt = displayFilename.replace(/\.[^.]+$/, '');
   _addRecentFile(downloadUrl, titleWithoutExt);
 
-  // Store for popup notification
   _lastIntercepted = {
     filename: displayFilename,
     timestamp: Date.now(),
@@ -558,39 +517,21 @@ async function _handleMarkdownDownload(downloadItem) {
   MARKUP_LOGGER.debug('ServiceWorker', 'Download intercepted — opened viewer for:', displayFilename);
 }
 
-// --- SW relay broadcast amendment ---
-// Add chrome.runtime.sendMessage() to existing relay handlers so extension pages
-// (viewer.html) also receive settings updates. This is additive and safe —
-// content scripts already listen via chrome.runtime.onMessage too.
-
 // --- Utility Functions ---
 
 /**
  * Check if a URL is already covered by the static content_scripts matches
- * defined in manifest.json. If so, we skip dynamic injection to avoid
- * running the content script twice.
- *
- * @param {string} url - The URL to check.
- * @returns {boolean} True if the URL matches a static content_scripts pattern.
- * @private
+ * defined in manifest.json.
  */
 function _isCoveredByStaticMatches(url) {
-  // Static patterns from manifest.json:
-  // - file:///*/*.md
-  // - file:///*/*.markdown
-  // - https://raw.githubusercontent.com/*
-
-  // file:// with .md extension
   if (url.startsWith('file://') && /\.md$/i.test(url.split('?')[0].split('#')[0])) {
     return true;
   }
 
-  // file:// with .markdown extension
   if (url.startsWith('file://') && /\.markdown$/i.test(url.split('?')[0].split('#')[0])) {
     return true;
   }
 
-  // raw.githubusercontent.com
   if (url.startsWith('https://raw.githubusercontent.com/')) {
     return true;
   }
@@ -602,9 +543,6 @@ function _isCoveredByStaticMatches(url) {
 
 /**
  * Get the list of recently opened Markdown files.
- *
- * @returns {Promise<Array<{url: string, title: string, timestamp: number}>>}
- * @private
  */
 async function _getRecentFiles() {
   try {
@@ -621,29 +559,19 @@ async function _getRecentFiles() {
 
 /**
  * Add a file to the recent files list.
- * Maintains a capped FIFO list of MAX_RECENT_FILES entries.
- * Deduplicates by URL (updates timestamp if already present).
- *
- * @param {string} url - The file URL.
- * @param {string} title - The document title.
- * @returns {Promise<void>}
- * @private
  */
 async function _addRecentFile(url, title) {
   try {
     let files = await _getRecentFiles();
 
-    // Remove existing entry for this URL (dedup)
     files = files.filter(f => f.url !== url);
 
-    // Add new entry at the beginning
     files.unshift({
       url: url,
       title: title,
       timestamp: Date.now(),
     });
 
-    // Cap the list
     if (files.length > MAX_RECENT_FILES) {
       files = files.slice(0, MAX_RECENT_FILES);
     }

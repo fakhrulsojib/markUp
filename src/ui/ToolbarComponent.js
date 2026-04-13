@@ -117,20 +117,16 @@ class ToolbarComponent extends BaseComponent {
       return;
     }
 
-    // Build the toolbar DOM
     this._element = this._buildToolbar();
 
-    // Append to parent
     parentElement.appendChild(this._element);
 
-    // Attach scroll listener for auto-hide
     if (this._autoHide) {
       window.addEventListener('scroll', this._boundOnScroll, { passive: true });
     }
 
     this._mounted = true;
 
-    // Load persisted position (async, non-blocking)
     this._loadPersistedPosition();
   }
 
@@ -142,14 +138,11 @@ class ToolbarComponent extends BaseComponent {
       return;
     }
 
-    // Remove scroll listener
     window.removeEventListener('scroll', this._boundOnScroll);
 
-    // Remove drag listeners in case unmount happens during drag
     document.removeEventListener('pointermove', this._boundOnDragMove);
     document.removeEventListener('pointerup', this._boundOnDragEnd);
 
-    // Remove the toolbar element from the DOM
     if (this._element && this._element.parentNode) {
       this._element.parentNode.removeChild(this._element);
     }
@@ -170,7 +163,6 @@ class ToolbarComponent extends BaseComponent {
   _buildToolbar() {
     const p = this._prefix;
 
-    // Define buttons
     const buttonDefs = [
       { id: 'toc',      label: 'Table of Contents', icon: '☰', event: this._EVENTS.TOC_TOGGLED },
       { id: 'theme',    label: 'Toggle Theme',      icon: '◑', event: this._EVENTS.THEME_CHANGED },
@@ -289,15 +281,12 @@ class ToolbarComponent extends BaseComponent {
 
     this._isDragging = true;
 
-    // Capture pointer for reliable tracking outside the element
     event.target.setPointerCapture(event.pointerId);
 
-    // Calculate offset from pointer to toolbar top-left
     const rect = this._element.getBoundingClientRect();
     this._dragOffsetX = event.clientX - rect.left;
     this._dragOffsetY = event.clientY - rect.top;
 
-    // Add dragging visual feedback
     this._element.classList.add(`${this._prefix}-toolbar-dragging`);
 
     // Switch to explicit position (remove right, use left)
@@ -305,7 +294,6 @@ class ToolbarComponent extends BaseComponent {
     this._element.style.left = `${rect.left}px`;
     this._element.style.top = `${rect.top}px`;
 
-    // Attach move and end listeners to document
     document.addEventListener('pointermove', this._boundOnDragMove);
     document.addEventListener('pointerup', this._boundOnDragEnd);
   }
@@ -345,26 +333,21 @@ class ToolbarComponent extends BaseComponent {
 
     this._isDragging = false;
 
-    // Release pointer capture on the drag handle button
     try {
       const dragBtn = this._element ? this._element.querySelector(`.${this._prefix}-toolbar-btn-drag`) : null;
       if (dragBtn && typeof dragBtn.releasePointerCapture === 'function') {
         dragBtn.releasePointerCapture(event.pointerId);
       }
     } catch (_) {
-      // Pointer capture may already be released
     }
 
-    // Remove visual feedback
     if (this._element) {
       this._element.classList.remove(`${this._prefix}-toolbar-dragging`);
     }
 
-    // Remove document-level listeners
     document.removeEventListener('pointermove', this._boundOnDragMove);
     document.removeEventListener('pointerup', this._boundOnDragEnd);
 
-    // Persist position
     this._savePosition();
   }
 

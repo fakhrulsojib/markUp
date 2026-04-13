@@ -168,10 +168,8 @@ class KeyboardManager {
     if (event.ctrlKey || event.metaKey) parts.push('ctrl');
     if (event.shiftKey) parts.push('shift');
 
-    // Get the key, normalizing special keys
     let key = event.key.toLowerCase();
 
-    // Don't add modifier-only keys
     if (key === 'control' || key === 'shift' || key === 'alt' || key === 'meta') {
       return '';
     }
@@ -195,13 +193,11 @@ class KeyboardManager {
 
     const parts = combo.toLowerCase().split('+').map((p) => p.trim());
 
-    // Separate modifiers and key
     const modifiers = [];
     const keys = [];
     const modifierSet = new Set(['ctrl', 'alt', 'shift', 'meta', 'cmd']);
 
     for (const part of parts) {
-      // Normalize 'cmd' to 'ctrl' for cross-platform
       if (part === 'cmd' || part === 'meta') {
         modifiers.push('ctrl');
       } else if (modifierSet.has(part)) {
@@ -211,7 +207,6 @@ class KeyboardManager {
       }
     }
 
-    // Sort modifiers alphabetically, then append key
     modifiers.sort();
     return [...modifiers, ...keys].join('+');
   }
