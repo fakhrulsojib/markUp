@@ -92,11 +92,11 @@
       _setSelectValue('markup-opt-fontfamily', fontFamily);
 
       // Behavior
-      const autoRender = await storage.get('autoRender');
+      const enabled = await storage.get('enabled');
       const extensions = await storage.get('extensions');
 
-      const autoRenderEl = document.getElementById('markup-opt-autorender');
-      if (autoRenderEl) autoRenderEl.checked = autoRender !== false;
+      const enabledEl = document.getElementById('markup-opt-enabled');
+      if (enabledEl) enabledEl.checked = enabled !== false;
 
       const extensionsEl = document.getElementById('markup-opt-extensions');
       if (extensionsEl && extensions) extensionsEl.value = extensions;
@@ -157,9 +157,9 @@
    * @private
    */
   function _wireBehaviorControls() {
-    _wireToggle('markup-opt-autorender', async (checked) => {
-      await _saveSetting('autoRender', checked);
-      await _notifyContentScript('APPLY_AUTO_RENDER', { autoRender: checked });
+    _wireToggle('markup-opt-enabled', async (checked) => {
+      await _saveSetting('enabled', checked);
+      await _notifyContentScript('APPLY_ENABLED', { enabled: checked });
     });
 
     const extensionsEl = document.getElementById('markup-opt-extensions');
@@ -213,7 +213,7 @@
       await storage.set('fontSize', DEFAULTS.FONT_SIZE);
       await storage.set('lineHeight', DEFAULTS.LINE_HEIGHT);
       await storage.set('fontFamily', DEFAULTS.FONT_FAMILY);
-      await storage.set('autoRender', true);
+      await storage.set('enabled', true);
       await storage.set('extensions', '.md, .markdown, .mdown, .mkd, .mdx');
       await storage.set('cspStrict', true);
       await storage.set('debugLog', false);

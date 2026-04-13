@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Phase 9.3 — Browser Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; background: #0d1117; color: #c9d1d9; }
+    h1 { font-size: 20px; margin-bottom: 4px; color: #58a6ff; }
+    .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+    .summary { padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 16px; font-weight: 600; }
+    .summary.pass { background: #0d2818; color: #3fb950; border: 1px solid #238636; }
+    .summary.fail { background: #2d1117; color: #f85149; border: 1px solid #da3633; }
+    .summary.running { background: #1a1e23; color: #d29922; border: 1px solid #9e6a03; }
+    .group { margin-bottom: 20px; }
+    .group-title { font-size: 15px; font-weight: 600; color: #58a6ff; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #21262d; }
+    .test { padding: 6px 12px; font-size: 13px; border-radius: 4px; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+    .test.pass { background: #0d2818; color: #3fb950; }
+    .test.fail { background: #2d1117; color: #f85149; }
+    .test .icon { font-size: 14px; flex-shrink: 0; }
+    .test .label { flex: 1; }
+    .test .detail { font-size: 11px; color: #8b949e; }
+  </style>
+</head>
+<body>
+
+<h1>Phase 9.3 — Unify &amp; Simplify Settings</h1>
+<p class="subtitle">Tests for consolidated <code>enabled</code> toggle, APPLY_ENABLED relay, UI sync, and regression</p>
+<div id="summary" class="summary running">⏳ Running tests…</div>
+<div id="results"></div>
+
+<script>
+// ==================== MOCK SETUP ====================
+
+window.chrome = {
+  storage: {
+    sync: {
+      get: function(keys, cb) {
+        const result = {};
+        if (typeof keys === 'string') {
+          if (window.__mockStorage && window.__mockStorage[keys] !== undefined) {
+            result[keys] = window.__mockStorage[keys];
+          }
+        } else if (keys === null) {
+          // getAll
+          if (window.__mockStorage) Object.assign(result, window.__mockStorage);
+        } else if (typeof keys === 'object' && !Array.isArray(keys)) {
+          for (const k of Object.keys(keys)) {
+            result[k] = (window.__mockStorage && window.__mockStorage[k] !== undefined)
+              ? window.__mockStorage[k]
+              : keys[k];
+          }
+        }
+        if (cb) cb(result);
+      },
+      set: function(items, cb) {
+        if (!window.__mockStorage) window.__mockStorage = {};
+        Object.assign(window.__mockStorage, items);
+        if (cb) cb();
+      },
+      remove: function(keys, cb) { if (cb) cb(); }
+    },
+    local: {
+      get: function(keys, cb) { if (cb) cb({}); },
+      set: function(items, cb) { if (cb) cb(); },
+      remove: function(keys, cb) { if (cb) cb(); }
+    }
+  },
+  runtime: {
+    lastError: null,
+    sendMessage: function(msg, cb) { if (cb) cb({}); },
+    onMessage: {
+      _listeners: [],
+      addListener: function(fn) { this._listeners.push(fn); },
+      removeListener: function(fn) { this._listeners = this._listeners.filter(l => l !== fn); }
+    },
+    id: 'mock-extension-id'
+  },
+  tabs: {
+    query: function(q, cb) { if (cb) cb([]); },
+    sendMessage: function(tabId, msg, cb) { if (cb) cb({}); return Promise.resolve({}); }
+  }
+};
+
+// ==================== TEST FRAMEWORK ====================
+
+let _totalTests = 0;
+let _passedTests = 0;
+let _failedTests = 0;
+const _resultsEl = document.getElementById('results');
+const _summaryEl = document.getElementById('summary');
+let _currentGroup = null;
+
+function group(name) {
+  const div = document.createElement('div');
+  div.className = 'group';
+  const title = document.createElement('div');
+  title.className = 'group-title';
+  title.textContent = name;
+  div.appendChild(title);
+  _resultsEl.appendChild(div);
+  _currentGroup = div;
+}
+
+function test(name, fn) {
+  _totalTests++;
+  const row = document.createElement('div');
+  row.className = 'test';
+  try {
+    fn();
+    _passedTests++;
+    row.classList.add('pass');
+    row.innerHTML = `<span class="icon">✅</span><span class="label">${name}</span>`;
+  } catch (e) {
+    _failedTests++;
+    row.classList.add('fail');
+    row.innerHTML = `<span class="icon">❌</span><span class="label">${name}</span><span class="detail">${e.message}</span>`;
+  }
+  (_currentGroup || _resultsEl).appendChild(row);
+}
+
+async function testAsync(name, fn) {
+  _totalTests++;
+  const row = document.createElement('div');
+  row.className = 'test';
+  try {
+    await fn();
+    _passedTests++;
+    row.classList.add('pass');
+    row.innerHTML = `<span class="icon">✅</span><span class="label">${name}</span>`;
+  } catch (e) {
+    _failedTests++;
+    row.classList.add('fail');
+    row.innerHTML = `<span class="icon">❌</span><span class="label">${name}</span><span class="detail">${e.message}</span>`;
+  }
+  (_currentGroup || _resultsEl).appendChild(row);
+}
+
+function assert(condition, msg) {
+  if (!condition) throw new Error(msg || 'Assertion failed');
+}
+
+function assertEqual(actual, expected, msg) {
+  if (actual !== expected) {
+    throw new Error(msg || `Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertIncludes(str, substr, msg) {
+  if (!str.includes(substr)) {
+    throw new Error(msg || `Expected string to include "${substr}"`);
+  }
+}
+
+function assertNotIncludes(str, substr, msg) {
+  if (str.includes(substr)) {
+    throw new Error(msg || `Expected string NOT to include "${substr}"`);
+  }
+}
+
+function updateSummary() {
+  if (_failedTests === 0) {
+    _summaryEl.className = 'summary pass';
+    _summaryEl.textContent = `✅ ALL PASSED (${_passedTests} tests)`;
+    document.title = `Phase 9.3 — ALL PASSED (${_passedTests} tests)`;
+  } else {
+    _summaryEl.className = 'summary fail';
+    _summaryEl.textContent = `❌ ${_failedTests} FAILED / ${_totalTests} total`;
+    document.title = `Phase 9.3 — ${_failedTests} FAILED`;
+  }
+}
+
+// ==================== LOAD SCRIPTS ====================
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadAll() {
+  await loadScript('../src/utils/constants.js');
+  await loadScript('../src/utils/logger.js');
+  await loadScript('../src/core/StorageManager.js');
+  await loadScript('../src/core/EventEmitter.js');
+  await loadScript('../src/core/MessageBus.js');
+  await loadScript('../src/core/FileDetector.js');
+}
+
+// ==================== TESTS ====================
+
+async function runTests() {
+  await loadAll();
+
+  // ================================================================
+  // Group 1: Constants — DEFAULTS.ENABLED replaces AUTORENDER/AUTODETECT
+  // ================================================================
+  group('Constants — DEFAULTS.ENABLED');
+
+  test('DEFAULTS.ENABLED exists and is true', () => {
+    assert(typeof MARKUP_CONSTANTS !== 'undefined', 'MARKUP_CONSTANTS missing');
+    assert('ENABLED' in MARKUP_CONSTANTS.DEFAULTS, 'ENABLED not in DEFAULTS');
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.ENABLED, true);
+  });
+
+  test('DEFAULTS.AUTORENDER is removed', () => {
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.AUTORENDER, undefined, 'AUTORENDER should be removed');
+  });
+
+  test('DEFAULTS.AUTODETECT is removed', () => {
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.AUTODETECT, undefined, 'AUTODETECT should be removed');
+  });
+
+  test('DEFAULTS.ENABLEFILEURL is removed', () => {
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.ENABLEFILEURL, undefined, 'ENABLEFILEURL should be removed');
+  });
+
+  test('DEFAULTS.DEBUGLOG still exists and is false', () => {
+    assert('DEBUGLOG' in MARKUP_CONSTANTS.DEFAULTS, 'DEBUGLOG missing');
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.DEBUGLOG, false);
+  });
+
+  // ================================================================
+  // Group 2: StorageManager reads 'enabled' key correctly
+  // ================================================================
+  group('StorageManager — enabled key');
+
+  await testAsync('StorageManager.get("enabled") returns true by default', async () => {
+    window.__mockStorage = {};
+    const sm = new MARKUP_STORAGE_MANAGER();
+    const val = await sm.get('enabled');
+    assertEqual(val, true, 'Default for enabled should be true (from DEFAULTS.ENABLED)');
+  });
+
+  await testAsync('StorageManager.get("enabled") returns false when set to false', async () => {
+    window.__mockStorage = { markup_enabled: false };
+    const sm = new MARKUP_STORAGE_MANAGER();
+    const val = await sm.get('enabled');
+    assertEqual(val, false);
+  });
+
+  await testAsync('StorageManager.set("enabled", false) persists correctly', async () => {
+    window.__mockStorage = {};
+    const sm = new MARKUP_STORAGE_MANAGER();
+    await sm.set('enabled', false);
+    assertEqual(window.__mockStorage['markup_enabled'], false);
+  });
+
+  // ================================================================
+  // Group 3: Popup HTML — UI elements
+  // ================================================================
+  group('Popup HTML — UI Elements');
+
+  await testAsync('popup.html has "Enable MarkUp" toggle with id="markup-toggle-enabled"', async () => {
+    const resp = await fetch('../src/popup/popup.html');
+    const html = await resp.text();
+    assertIncludes(html, 'markup-toggle-enabled', 'markup-toggle-enabled not found');
+    assertIncludes(html, 'Enable MarkUp', 'Enable MarkUp label not found');
+  });
+
+  await testAsync('popup.html does NOT have old autodetect toggle', async () => {
+    const resp = await fetch('../src/popup/popup.html');
+    const html = await resp.text();
+    assertNotIncludes(html, 'markup-toggle-autodetect', 'Old autodetect toggle should be removed');
+    assertNotIncludes(html, 'Auto-detect .md files', 'Old autodetect label should be removed');
+  });
+
+  await testAsync('popup.html does NOT have fileurl toggle (removed)', async () => {
+    const resp = await fetch('../src/popup/popup.html');
+    const html = await resp.text();
+    assertNotIncludes(html, 'markup-toggle-fileurl', 'fileurl toggle should be removed');
+    assertNotIncludes(html, 'Enable on file:// URLs', 'file URL label should be removed');
+  });
+
+  // ================================================================
+  // Group 4: Popup JS — storage key and message action
+  // ================================================================
+  group('Popup JS — Consolidated Logic');
+
+  await testAsync('popup.js reads "enabled" storage key (not "autoDetect")', async () => {
+    const resp = await fetch('../src/popup/popup.js');
+    const code = await resp.text();
+    assertIncludes(code, "storage.get('enabled')", 'Should read enabled key');
+    assertNotIncludes(code, "storage.get('autoDetect')", 'Should NOT read autoDetect key');
+  });
+
+  await testAsync('popup.js sets "enabled" storage key (not "autoDetect")', async () => {
+    const resp = await fetch('../src/popup/popup.js');
+    const code = await resp.text();
+    assertIncludes(code, "storage.set('enabled'", 'Should set enabled key');
+    assertNotIncludes(code, "storage.set('autoDetect'", 'Should NOT set autoDetect key');
+  });
+
+  await testAsync('popup.js sends APPLY_ENABLED (not APPLY_AUTO_DETECT)', async () => {
+    const resp = await fetch('../src/popup/popup.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_ENABLED'", 'Should send APPLY_ENABLED');
+    assertNotIncludes(code, "'APPLY_AUTO_DETECT'", 'Should NOT send APPLY_AUTO_DETECT');
+  });
+
+  await testAsync('popup.js references markup-toggle-enabled (not autodetect)', async () => {
+    const resp = await fetch('../src/popup/popup.js');
+    const code = await resp.text();
+    assertIncludes(code, 'markup-toggle-enabled', 'Should reference new toggle ID');
+    assertNotIncludes(code, 'markup-toggle-autodetect', 'Should NOT reference old toggle ID');
+  });
+
+  // ================================================================
+  // Group 5: Options HTML — UI elements
+  // ================================================================
+  group('Options HTML — UI Elements');
+
+  await testAsync('options.html has "Enable MarkUp" toggle with id="markup-opt-enabled"', async () => {
+    const resp = await fetch('../src/options/options.html');
+    const html = await resp.text();
+    assertIncludes(html, 'markup-opt-enabled', 'markup-opt-enabled not found');
+    assertIncludes(html, 'Enable MarkUp', 'Enable MarkUp label not found');
+  });
+
+  await testAsync('options.html does NOT have old autorender toggle', async () => {
+    const resp = await fetch('../src/options/options.html');
+    const html = await resp.text();
+    assertNotIncludes(html, 'markup-opt-autorender', 'Old autorender toggle should be removed');
+    assertNotIncludes(html, 'Auto-render Markdown files', 'Old autorender label should be removed');
+  });
+
+  await testAsync('options.html does NOT have file URL toggle (removed)', async () => {
+    const resp = await fetch('../src/options/options.html');
+    const html = await resp.text();
+    assertNotIncludes(html, 'markup-opt-fileurl', 'markup-opt-fileurl should be removed');
+    assertNotIncludes(html, 'Enable on file:// URLs', 'Enable on file:// URLs label should be removed');
+  });
+
+  // ================================================================
+  // Group 6: Options JS — storage key and message action
+  // ================================================================
+  group('Options JS — Consolidated Logic');
+
+  await testAsync('options.js reads "enabled" storage key (not "autoRender")', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertIncludes(code, "storage.get('enabled')", 'Should read enabled key');
+    assertNotIncludes(code, "storage.get('autoRender')", 'Should NOT read autoRender key');
+  });
+
+  await testAsync('options.js sets "enabled" key (not "autoRender")', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertIncludes(code, "'enabled', checked", 'Should save enabled key on toggle');
+    assertNotIncludes(code, "'autoRender', checked", 'Should NOT save autoRender key');
+  });
+
+  await testAsync('options.js sends APPLY_ENABLED (not APPLY_AUTO_RENDER)', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_ENABLED'", 'Should send APPLY_ENABLED');
+    assertNotIncludes(code, "'APPLY_AUTO_RENDER'", 'Should NOT send APPLY_AUTO_RENDER');
+  });
+
+  await testAsync('options.js does NOT wire enableFileUrl (removed)', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "'markup-opt-fileurl'", 'Should NOT wire fileurl toggle');
+    assertNotIncludes(code, "'APPLY_ENABLE_FILE_URL'", 'Should NOT send APPLY_ENABLE_FILE_URL');
+  });
+
+  await testAsync('options.js does NOT read enableFileUrl in _loadAllSettings', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "storage.get('enableFileUrl')", 'Should NOT read enableFileUrl');
+  });
+
+  await testAsync('options.js reset does NOT set enableFileUrl', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assertIncludes(code, "storage.set('enabled', true)", 'Reset should set enabled=true');
+    assertNotIncludes(code, "storage.set('enableFileUrl'", 'Reset should NOT set enableFileUrl');
+    assertNotIncludes(code, "storage.set('autoRender'", 'Reset should NOT set autoRender');
+  });
+
+  // ================================================================
+  // Group 7: Content Script — enabled gate
+  // ================================================================
+  group('Content Script — enabled Gate');
+
+  await testAsync('content-script.js reads "enabled" key (not "autoRender")', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "earlyStorage.get('enabled')", 'Should read enabled key');
+    assertNotIncludes(code, "earlyStorage.get('autoRender')", 'Should NOT read autoRender key');
+  });
+
+  await testAsync('content-script.js listens for APPLY_ENABLED (not APPLY_AUTO_RENDER)', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_ENABLED'", 'Should listen for APPLY_ENABLED');
+    assertNotIncludes(code, "'APPLY_AUTO_RENDER'", 'Should NOT listen for APPLY_AUTO_RENDER');
+  });
+
+  await testAsync('content-script.js disabled banner says "MarkUp is disabled"', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "MarkUp is disabled.", 'Banner should say "MarkUp is disabled."');
+    // The actual textContent assignment should use the new text
+    assertNotIncludes(code, "textContent = '⏸️ MarkUp auto-rendering is disabled.'",
+      'Old banner text assignment should be removed');
+  });
+
+  await testAsync('content-script.js enable button sets "enabled" key (not "autoRender")', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "sm.set('enabled', true)", 'Enable button should set enabled=true');
+    assertNotIncludes(code, "sm.set('autoRender', true)", 'Should NOT set autoRender=true');
+  });
+
+  await testAsync('content-script.js does NOT have enableFileUrl gate (removed)', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "earlyStorage.get('enableFileUrl')", 'enableFileUrl gate should be removed');
+  });
+
+  await testAsync('content-script.js does NOT have APPLY_ENABLE_FILE_URL listener (removed)', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "'APPLY_ENABLE_FILE_URL'", 'APPLY_ENABLE_FILE_URL listener should be removed');
+  });
+
+  // ================================================================
+  // Group 8: Service Worker — enabled gate and APPLY_ENABLED relay
+  // ================================================================
+  group('Service Worker — enabled Gate & APPLY_ENABLED Relay');
+
+  await testAsync('service-worker.js reads "enabled" key (not "autoDetect")', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "settingsStorage.get('enabled')", 'Should read enabled key');
+    assertNotIncludes(code, "settingsStorage.get('autoDetect')", 'Should NOT read autoDetect key');
+  });
+
+  await testAsync('service-worker.js has APPLY_ENABLED listener', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_ENABLED'", 'APPLY_ENABLED listener should exist');
+  });
+
+  await testAsync('service-worker.js does NOT have APPLY_AUTO_RENDER listener', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "'APPLY_AUTO_RENDER'", 'APPLY_AUTO_RENDER should be removed');
+  });
+
+  await testAsync('service-worker.js does NOT have APPLY_AUTO_DETECT listener', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "'APPLY_AUTO_DETECT'", 'APPLY_AUTO_DETECT should not exist');
+  });
+
+  await testAsync('service-worker.js does NOT have APPLY_ENABLE_FILE_URL relay (removed)', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertNotIncludes(code, "'APPLY_ENABLE_FILE_URL'", 'APPLY_ENABLE_FILE_URL relay should be removed');
+  });
+
+  await testAsync('service-worker.js APPLY_ENABLED relays to markdown tabs', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    const idx = code.indexOf("'APPLY_ENABLED'");
+    const section = code.substring(idx, idx + 500);
+    assertIncludes(section, 'chrome.tabs.sendMessage', 'APPLY_ENABLED should relay to tabs');
+  });
+
+  // ================================================================
+  // Group 9: MessageBus — APPLY_ENABLED handler works
+  // ================================================================
+  group('MessageBus — APPLY_ENABLED Handler');
+
+  test('MessageBus can register and dispatch APPLY_ENABLED', () => {
+    const bus = new MARKUP_MESSAGE_BUS();
+    let received = null;
+    bus.listen('APPLY_ENABLED', (payload) => {
+      received = payload;
+      return { success: true };
+    });
+
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    const mockSendResponse = function() {};
+    listener(
+      { action: 'APPLY_ENABLED', payload: { enabled: false } },
+      { tab: { id: 1 } },
+      mockSendResponse
+    );
+    assert(received !== null, 'Handler should have been called');
+    assertEqual(received.enabled, false, 'Payload should contain enabled: false');
+    bus.destroy();
+  });
+
+  test('MessageBus does NOT respond to old APPLY_AUTO_RENDER', () => {
+    const bus = new MARKUP_MESSAGE_BUS();
+    let called = false;
+    bus.listen('APPLY_ENABLED', () => { called = true; return {}; });
+
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    listener(
+      { action: 'APPLY_AUTO_RENDER', payload: {} },
+      { tab: { id: 1 } },
+      function() {}
+    );
+    assertEqual(called, false, 'APPLY_AUTO_RENDER should NOT trigger APPLY_ENABLED handler');
+    bus.destroy();
+  });
+
+  test('MessageBus does NOT respond to old APPLY_AUTO_DETECT', () => {
+    const bus = new MARKUP_MESSAGE_BUS();
+    let called = false;
+    bus.listen('APPLY_ENABLED', () => { called = true; return {}; });
+
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    listener(
+      { action: 'APPLY_AUTO_DETECT', payload: {} },
+      { tab: { id: 1 } },
+      function() {}
+    );
+    assertEqual(called, false, 'APPLY_AUTO_DETECT should NOT trigger APPLY_ENABLED handler');
+    bus.destroy();
+  });
+
+  // ================================================================
+  // Group 10: UI Sync — Same labels in both Popup and Options
+  // ================================================================
+  group('UI Sync — Same Labels in Popup & Options');
+
+  await testAsync('Both popup and options have "Enable MarkUp" label', async () => {
+    const popupResp = await fetch('../src/popup/popup.html');
+    const popupHtml = await popupResp.text();
+    const optionsResp = await fetch('../src/options/options.html');
+    const optionsHtml = await optionsResp.text();
+    assertIncludes(popupHtml, 'Enable MarkUp', 'Popup should have "Enable MarkUp"');
+    assertIncludes(optionsHtml, 'Enable MarkUp', 'Options should have "Enable MarkUp"');
+  });
+
+  await testAsync('Neither popup nor options has "Enable on file:// URLs" toggle (removed)', async () => {
+    const popupResp = await fetch('../src/popup/popup.html');
+    const popupHtml = await popupResp.text();
+    const optionsResp = await fetch('../src/options/options.html');
+    const optionsHtml = await optionsResp.text();
+    assertNotIncludes(popupHtml, 'Enable on file:// URLs', 'Popup should NOT have file URL toggle');
+    assertNotIncludes(optionsHtml, 'Enable on file:// URLs', 'Options should NOT have file URL toggle');
+  });
+
+  await testAsync('Neither popup nor options has "Auto-detect" label', async () => {
+    const popupResp = await fetch('../src/popup/popup.html');
+    const popupHtml = await popupResp.text();
+    const optionsResp = await fetch('../src/options/options.html');
+    const optionsHtml = await optionsResp.text();
+    assertNotIncludes(popupHtml, 'Auto-detect', 'Popup should NOT have old "Auto-detect" label');
+    assertNotIncludes(optionsHtml, 'Auto-render', 'Options should NOT have old "Auto-render" label');
+  });
+
+  // ================================================================
+  // Group 11: Regression — Existing settings still work
+  // ================================================================
+  group('Regression — Existing Settings Preserved');
+
+  await testAsync('service-worker.js still has APPLY_THEME relay', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_THEME'", 'APPLY_THEME relay should exist');
+  });
+
+  await testAsync('service-worker.js still has APPLY_FONT_SIZE relay', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_FONT_SIZE'", 'APPLY_FONT_SIZE relay should exist');
+  });
+
+  await testAsync('service-worker.js still has APPLY_LINE_HEIGHT relay', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_LINE_HEIGHT'", 'APPLY_LINE_HEIGHT relay should exist');
+  });
+
+  await testAsync('service-worker.js still has APPLY_FONT_FAMILY relay', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_FONT_FAMILY'", 'APPLY_FONT_FAMILY relay should exist');
+  });
+
+  await testAsync('service-worker.js still has APPLY_DEBUG_LOG relay', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_DEBUG_LOG'", 'APPLY_DEBUG_LOG relay should exist');
+  });
+
+  await testAsync('content-script.js still has APPLY_THEME listener', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_THEME'", 'APPLY_THEME listener should exist');
+  });
+
+  await testAsync('content-script.js still has APPLY_FONT_SIZE listener', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_FONT_SIZE'", 'APPLY_FONT_SIZE listener should exist');
+  });
+
+  await testAsync('content-script.js still has APPLY_DEBUG_LOG early listener', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assertIncludes(code, "'APPLY_DEBUG_LOG'", 'APPLY_DEBUG_LOG early listener should exist');
+  });
+
+  // ================================================================
+  // Group 12: Regression — No old storage key references
+  // ================================================================
+  group('Regression — No Old Storage Key References');
+
+  await testAsync('No file references autoDetect storage key in get/set calls', async () => {
+    const files = [
+      '../src/popup/popup.js',
+      '../src/options/options.js',
+      '../src/content/content-script.js',
+    ];
+    for (const file of files) {
+      const resp = await fetch(file);
+      const code = await resp.text();
+      assertNotIncludes(code, "get('autoDetect')", `${file} should not reference autoDetect`);
+      assertNotIncludes(code, "set('autoDetect'", `${file} should not set autoDetect`);
+    }
+  });
+
+  await testAsync('No file references autoRender storage key in get/set calls', async () => {
+    const files = [
+      '../src/popup/popup.js',
+      '../src/options/options.js',
+      '../src/content/content-script.js',
+    ];
+    for (const file of files) {
+      const resp = await fetch(file);
+      const code = await resp.text();
+      assertNotIncludes(code, "get('autoRender')", `${file} should not reference autoRender`);
+      assertNotIncludes(code, "set('autoRender'", `${file} should not set autoRender`);
+    }
+  });
+
+  // ================================================================
+  // Group 13: Regression — Manifest unchanged
+  // ================================================================
+  group('Regression — Manifest Integrity');
+
+  await testAsync('manifest.json content_scripts unchanged', async () => {
+    const resp = await fetch('../src/manifest.json');
+    const manifest = await resp.json();
+    assert(manifest.content_scripts.length === 1, 'Should have 1 content_scripts entry');
+    const cs = manifest.content_scripts[0];
+    assert(cs.js.includes('content/content-script.js'), 'content-script.js should be in manifest');
+    assert(cs.js.includes('utils/constants.js'), 'constants.js should be in manifest');
+  });
+
+  await testAsync('manifest.json options_page still present', async () => {
+    const resp = await fetch('../src/manifest.json');
+    const manifest = await resp.json();
+    assertEqual(manifest.options_page, 'options/options.html');
+  });
+
+  // Update summary
+  updateSummary();
+}
+
+runTests().catch(err => {
+  console.error('Test runner error:', err);
+  _summaryEl.className = 'summary fail';
+  _summaryEl.textContent = '❌ Test runner crashed: ' + err.message;
+});
+</script>
+
+</body>
+</html>
