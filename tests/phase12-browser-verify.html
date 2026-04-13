@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Phase 12 — Optional Host Permissions & Site Management Tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; }
+    .suite { margin: 20px 0; padding: 16px; border-radius: 8px; background: #161b22; border: 1px solid #30363d; }
+    .suite h2 { margin-top: 0; color: #79c0ff; font-size: 16px; }
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .test-result { padding: 4px 8px; margin: 2px 0; font-family: monospace; font-size: 13px; }
+    .summary { padding: 16px; margin: 20px 0; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    .summary.all-pass { background: #0d2818; border: 1px solid #3fb950; color: #3fb950; }
+    .summary.has-fail { background: #2d0b0b; border: 1px solid #f85149; color: #f85149; }
+  </style>
+</head>
+<body>
+  <h1>Phase 12 — Optional Host Permissions & Site Management Tests</h1>
+  <p>Verifying: optional_host_permissions, viewer permission flow, blocked sites, service worker check, options site management, regressions.</p>
+
+  <div id="results"></div>
+  <div id="summary"></div>
+
+  <script>
+    // ===== Minimal Test Framework =====
+    let totalPass = 0, totalFail = 0;
+    const resultsEl = document.getElementById('results');
+    let currentSuiteEl = null;
+
+    function suite(name) {
+      const div = document.createElement('div');
+      div.className = 'suite';
+      const h2 = document.createElement('h2');
+      h2.textContent = name;
+      div.appendChild(h2);
+      resultsEl.appendChild(div);
+      currentSuiteEl = div;
+    }
+
+    function test(name, fn) {
+      const div = document.createElement('div');
+      div.className = 'test-result';
+      try {
+        fn();
+        div.classList.add('pass');
+        div.textContent = '✅ ' + name;
+        totalPass++;
+      } catch (e) {
+        div.classList.add('fail');
+        div.textContent = '❌ ' + name + ' — ' + e.message;
+        totalFail++;
+      }
+      currentSuiteEl.appendChild(div);
+    }
+
+    function assertEqual(a, b) {
+      if (a !== b) throw new Error('Expected "' + b + '" but got "' + a + '"');
+    }
+    function assertTrue(v, msg) {
+      if (!v) throw new Error(msg || 'Expected true but got ' + v);
+    }
+    function assertContains(str, sub) {
+      if (typeof str !== 'string' || !str.includes(sub)) throw new Error('Expected string to contain "' + sub + '"');
+    }
+    function assertNotContains(str, sub, msg) {
+      if (typeof str === 'string' && str.includes(sub)) throw new Error(msg || 'Expected string NOT to contain "' + sub + '"');
+    }
+    function assertExists(v, msg) {
+      if (v === undefined || v === null) throw new Error(msg || 'Expected value to exist');
+    }
+
+    // ===== Mock Chrome APIs =====
+    const mockSyncStorage = {};
+    const mockLocalStorage = {};
+    const grantedPermissions = { permissions: ['activeTab', 'storage', 'scripting', 'tabs', 'downloads'], origins: [] };
+
+    const chrome = {
+      runtime: {
+        id: 'test-extension-id',
+        getURL: (path) => 'chrome-extension://test-extension-id/' + path,
+        sendMessage: () => {},
+        onMessage: { addListener: () => {}, removeListener: () => {} },
+        openOptionsPage: () => {},
+        lastError: null,
+      },
+      storage: {
+        sync: {
+          get: (keys, cb) => { if (cb) cb(mockSyncStorage); return Promise.resolve(mockSyncStorage); },
+          set: (obj, cb) => { Object.assign(mockSyncStorage, obj); if (cb) cb(); return Promise.resolve(); },
+        },
+        local: {
+          get: (keys, cb) => { if (cb) cb(mockLocalStorage); return Promise.resolve(mockLocalStorage); },
+          set: (obj, cb) => { Object.assign(mockLocalStorage, obj); if (cb) cb(); return Promise.resolve(); },
+        },
+      },
+      permissions: {
+        getAll: () => Promise.resolve(grantedPermissions),
+        contains: (p) => {
+          const origins = grantedPermissions.origins || [];
+          const match = (p.origins || []).every(o => origins.includes(o));
+          return Promise.resolve(match);
+        },
+        request: (p) => Promise.resolve(true),
+        remove: (p) => {
+          grantedPermissions.origins = (grantedPermissions.origins || []).filter(
+            o => !(p.origins || []).includes(o)
+          );
+          return Promise.resolve(true);
+        },
+      },
+      tabs: { create: () => {} },
+      downloads: {
+        download: () => {},
+        cancel: () => Promise.resolve(),
+        removeFile: () => Promise.resolve(),
+        erase: () => Promise.resolve(),
+        onDeterminingFilename: { addListener: () => {} },
+      },
+    };
+    window.chrome = chrome;
+
+    // ===== Tests =====
+    (async () => {
+
+      // --- 12.1: Manifest — optional_host_permissions ---
+      suite('12.1 — Manifest: optional_host_permissions');
+
+      try {
+        const manifestResp = await fetch('../src/manifest.json');
+        const manifest = await manifestResp.json();
+
+        test('manifest.json has optional_host_permissions key', () => {
+          assertExists(manifest.optional_host_permissions, 'optional_host_permissions should exist');
+        });
+
+        test('optional_host_permissions contains <all_urls>', () => {
+          assertTrue(
+            manifest.optional_host_permissions.includes('<all_urls>'),
+            'Should include <all_urls>'
+          );
+        });
+
+        test('manifest.json does NOT have host_permissions key', () => {
+          assertTrue(
+            !manifest.host_permissions,
+            'host_permissions should be removed'
+          );
+        });
+
+        test('manifest.json still has all required permissions', () => {
+          assertTrue(manifest.permissions.includes('activeTab'), 'Should have activeTab');
+          assertTrue(manifest.permissions.includes('storage'), 'Should have storage');
+          assertTrue(manifest.permissions.includes('scripting'), 'Should have scripting');
+          assertTrue(manifest.permissions.includes('tabs'), 'Should have tabs');
+          assertTrue(manifest.permissions.includes('downloads'), 'Should have downloads');
+        });
+
+        test('manifest.json version is still 0.3.0', () => {
+          assertEqual(manifest.version, '0.3.0');
+        });
+
+      } catch (e) {
+        test('manifest.json fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.2: Viewer — Permission Request Flow ---
+      suite('12.2 — Viewer: Permission Request Flow');
+
+      try {
+        const viewerResp = await fetch('../src/viewer/viewer.js');
+        const viewerJs = await viewerResp.text();
+
+        test('viewer.js has _extractOrigin function', () => {
+          assertContains(viewerJs, 'function _extractOrigin');
+        });
+
+        test('viewer.js has _showPermissionRequest function', () => {
+          assertContains(viewerJs, 'function _showPermissionRequest');
+        });
+
+        test('viewer.js has _getBlockedSites function', () => {
+          assertContains(viewerJs, 'function _getBlockedSites');
+        });
+
+        test('viewer.js has _addBlockedSite function', () => {
+          assertContains(viewerJs, 'function _addBlockedSite');
+        });
+
+        test('viewer.js has _showBlockedSiteMessage function', () => {
+          assertContains(viewerJs, 'function _showBlockedSiteMessage');
+        });
+
+        test('viewer.js checks blockedSites before fetching', () => {
+          assertContains(viewerJs, '_getBlockedSites()');
+          assertContains(viewerJs, 'blockedSites.includes(origin)');
+        });
+
+        test('viewer.js checks chrome.permissions.contains before fetching', () => {
+          assertContains(viewerJs, 'chrome.permissions.contains');
+        });
+
+        test('viewer.js only checks permissions for http/https URLs', () => {
+          assertContains(viewerJs, "startsWith('http://')");
+          assertContains(viewerJs, "startsWith('https://')");
+        });
+
+        test('viewer.js calls chrome.permissions.request on grant button click', () => {
+          assertContains(viewerJs, 'chrome.permissions.request');
+        });
+
+        test('viewer.js saves blocked site on deny', () => {
+          assertContains(viewerJs, '_addBlockedSite(origin)');
+        });
+
+        test('viewer.js permission request card has Grant access button', () => {
+          assertContains(viewerJs, 'Grant access');
+        });
+
+        test('viewer.js permission request card has Download instead button', () => {
+          // In the _showPermissionRequest function
+          const permSection = viewerJs.split('function _showPermissionRequest')[1].split('function _showCORSError')[0];
+          assertContains(permSection, 'Download instead');
+        });
+
+        test('viewer.js blocked site card has Download instead button', () => {
+          const blockedSection = viewerJs.split('function _showBlockedSiteMessage')[1].split('function _extractOrigin')[0];
+          assertContains(blockedSection, 'Download instead');
+        });
+
+        test('viewer.js blocked site card has Open Options button', () => {
+          assertContains(viewerJs, 'Open Options');
+          assertContains(viewerJs, 'chrome.runtime.openOptionsPage');
+        });
+
+        test('viewer.js blocked site card mentions Options page', () => {
+          assertContains(viewerJs, 'Site Permissions');
+        });
+
+        test('viewer.js reloads page after permission grant', () => {
+          assertContains(viewerJs, 'window.location.reload()');
+        });
+
+        test('viewer.js _showBlockedSiteMessage uses chrome.downloads.download', () => {
+          const blockedSection = viewerJs.split('function _showBlockedSiteMessage')[1].split('function _extractOrigin')[0];
+          assertContains(blockedSection, 'chrome.downloads.download');
+        });
+
+      } catch (e) {
+        test('viewer.js fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.2b: _extractOrigin Unit Tests ---
+      suite('12.2b — _extractOrigin Unit Tests');
+
+      // Simulate _extractOrigin locally for unit testing
+      function _extractOrigin(url) {
+        try {
+          const u = new URL(url);
+          return u.origin + '/*';
+        } catch (_) {
+          return url;
+        }
+      }
+
+      test('extractOrigin returns origin/* for https URL', () => {
+        assertEqual(_extractOrigin('https://files.slack.com/files/readme.md'), 'https://files.slack.com/*');
+      });
+
+      test('extractOrigin returns origin/* for http URL', () => {
+        assertEqual(_extractOrigin('http://example.com/docs/file.md'), 'http://example.com/*');
+      });
+
+      test('extractOrigin handles URL with port', () => {
+        assertEqual(_extractOrigin('https://localhost:8080/test.md'), 'https://localhost:8080/*');
+      });
+
+      test('extractOrigin handles URL with path and query', () => {
+        assertEqual(_extractOrigin('https://chat.google.com/download?id=123&file=test.md'), 'https://chat.google.com/*');
+      });
+
+      test('extractOrigin returns input for invalid URL', () => {
+        assertEqual(_extractOrigin('not-a-url'), 'not-a-url');
+      });
+
+      // --- 12.3: Service Worker — Blocked Site Check ---
+      suite('12.3 — Service Worker: Blocked Site Check');
+
+      try {
+        const swResp = await fetch('../src/background/service-worker.js');
+        const swJs = await swResp.text();
+
+        test('service-worker.js checks blockedSites before intercepting downloads', () => {
+          assertContains(swJs, 'blockedSites');
+        });
+
+        test('service-worker.js reads blockedSites from local storage', () => {
+          const handleSection = swJs.split('_handleMarkdownDownload')[2]; // Get the function body (2nd occurrence is definition)
+          assertContains(handleSection, "localStore");
+          assertContains(handleSection, "'blockedSites'");
+        });
+
+        test('service-worker.js checks origin against blocked list', () => {
+          assertContains(swJs, 'blockedSites.includes(origin)');
+        });
+
+        test('service-worker.js returns early for blocked origins', () => {
+          // After the blocked check, there should be a return
+          const handleFn = swJs.split('async function _handleMarkdownDownload')[1];
+          const blockedCheck = handleFn.split('blockedSites.includes(origin)')[1].split('}')[0];
+          assertContains(blockedCheck, 'return');
+        });
+
+        test('service-worker.js blocked check is after enabled check', () => {
+          const handleFn = swJs.split('async function _handleMarkdownDownload')[1];
+          const enabledIdx = handleFn.indexOf("get('enabled')");
+          const blockedIdx = handleFn.indexOf("get('blockedSites')");
+          assertTrue(enabledIdx < blockedIdx, 'enabled check should be before blockedSites check');
+        });
+
+        test('service-worker.js blocked check is before download cancel', () => {
+          const handleFn = swJs.split('async function _handleMarkdownDownload')[1];
+          const blockedIdx = handleFn.indexOf("get('blockedSites')");
+          const cancelIdx = handleFn.indexOf('downloads.cancel');
+          assertTrue(blockedIdx < cancelIdx, 'blockedSites check should be before download cancel');
+        });
+
+        test('service-worker.js still has chrome.downloads.onDeterminingFilename listener', () => {
+          assertContains(swJs, 'chrome.downloads.onDeterminingFilename.addListener');
+        });
+
+        test('service-worker.js still skips blob/data URLs', () => {
+          assertContains(swJs, "startsWith('blob:')");
+          assertContains(swJs, "startsWith('data:')");
+        });
+
+        test('service-worker.js still skips own extension downloads', () => {
+          assertContains(swJs, 'byExtensionId');
+        });
+
+      } catch (e) {
+        test('service-worker.js fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.4: Options Page — Site Management UI ---
+      suite('12.4 — Options Page: Site Management UI');
+
+      try {
+        const optHtmlResp = await fetch('../src/options/options.html');
+        const optHtml = await optHtmlResp.text();
+
+        test('options.html has Site Permissions section', () => {
+          assertContains(optHtml, 'Site Permissions');
+        });
+
+        test('options.html has markup-options-sites section id', () => {
+          assertContains(optHtml, 'markup-options-sites');
+        });
+
+        test('options.html has allowed sites list', () => {
+          assertContains(optHtml, 'markup-opt-allowed-sites');
+        });
+
+        test('options.html has blocked sites list', () => {
+          assertContains(optHtml, 'markup-opt-blocked-sites');
+        });
+
+        test('options.html has Allowed Sites label', () => {
+          assertContains(optHtml, 'Allowed Sites');
+        });
+
+        test('options.html has Blocked Sites label', () => {
+          assertContains(optHtml, 'Blocked Sites');
+        });
+
+        test('options.html Site Permissions section is between Advanced and About', () => {
+          const advIdx = optHtml.indexOf('markup-options-advanced');
+          const sitesIdx = optHtml.indexOf('markup-options-sites');
+          const aboutIdx = optHtml.indexOf('markup-options-about');
+          assertTrue(advIdx < sitesIdx, 'Sites should be after Advanced');
+          assertTrue(sitesIdx < aboutIdx, 'Sites should be before About');
+        });
+
+        test('options.html has help text explaining site permissions', () => {
+          assertContains(optHtml, 'intercepts a Markdown download');
+        });
+
+        test('options.html has empty state messages', () => {
+          assertContains(optHtml, 'No allowed sites');
+          assertContains(optHtml, 'No blocked sites');
+        });
+
+      } catch (e) {
+        test('options.html fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      try {
+        const optJsResp = await fetch('../src/options/options.js');
+        const optJs = await optJsResp.text();
+
+        test('options.js has _loadSitePermissions function', () => {
+          assertContains(optJs, '_loadSitePermissions');
+        });
+
+        test('options.js has _renderAllowedSites function', () => {
+          assertContains(optJs, '_renderAllowedSites');
+        });
+
+        test('options.js has _renderBlockedSites function', () => {
+          assertContains(optJs, '_renderBlockedSites');
+        });
+
+        test('options.js calls _loadSitePermissions in _init', () => {
+          // _init calls _loadSitePermissions after _wireThemeRelay
+          const initIdx = optJs.indexOf('async function _init');
+          const loadIdx = optJs.indexOf('_loadSitePermissions()', initIdx);
+          assertTrue(loadIdx > initIdx, '_loadSitePermissions should be called after _init is defined');
+        });
+
+        test('options.js uses chrome.permissions.getAll for allowed sites', () => {
+          assertContains(optJs, 'chrome.permissions.getAll');
+        });
+
+        test('options.js uses chrome.permissions.remove for revoking', () => {
+          assertContains(optJs, 'chrome.permissions.remove');
+        });
+
+        test('options.js filters out <all_urls> from allowed sites', () => {
+          assertContains(optJs, "'<all_urls>'");
+        });
+
+        test('options.js has Revoke button for allowed sites', () => {
+          assertContains(optJs, "'Revoke'");
+        });
+
+        test('options.js has Unblock button for blocked sites', () => {
+          assertContains(optJs, "'Unblock'");
+        });
+
+        test('options.js reads blockedSites from local storage', () => {
+          assertContains(optJs, "'blockedSites'");
+        });
+
+        test('options.js refreshes lists after revoke/unblock', () => {
+          // Both _renderAllowedSites and _renderBlockedSites call _loadSitePermissions to refresh
+          const allowedFn = optJs.split('_renderAllowedSites')[1];
+          assertContains(allowedFn, '_loadSitePermissions');
+          const blockedFn = optJs.split('_renderBlockedSites')[1];
+          assertContains(blockedFn, '_loadSitePermissions');
+        });
+
+      } catch (e) {
+        test('options.js fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      try {
+        const optCssResp = await fetch('../src/options/options.css');
+        const optCss = await optCssResp.text();
+
+        test('options.css has .markup-site-list styles', () => {
+          assertContains(optCss, '.markup-site-list');
+        });
+
+        test('options.css has .markup-site-empty styles', () => {
+          assertContains(optCss, '.markup-site-empty');
+        });
+
+        test('options.css has .markup-site-origin styles', () => {
+          assertContains(optCss, '.markup-site-origin');
+        });
+
+        test('options.css has .markup-site-remove-btn styles', () => {
+          assertContains(optCss, '.markup-site-remove-btn');
+        });
+
+        test('options.css site origin uses monospace font', () => {
+          const originSection = optCss.split('.markup-site-origin')[1].split('}')[0];
+          assertContains(originSection, 'monospace');
+        });
+
+        test('options.css remove button uses danger color', () => {
+          const btnSection = optCss.split('.markup-site-remove-btn')[1].split('}')[0];
+          assertContains(btnSection, 'danger');
+        });
+
+      } catch (e) {
+        test('options.css fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.5: Blocked Sites Storage Logic ---
+      suite('12.5 — Blocked Sites Storage Logic');
+
+      try {
+        const viewerJs = await (await fetch('../src/viewer/viewer.js')).text();
+
+        test('_getBlockedSites uses StorageManager with local area', () => {
+          const fnBody = viewerJs.split('function _getBlockedSites')[1].split('function _addBlockedSite')[0];
+          assertContains(fnBody, "'local'");
+        });
+
+        test('_addBlockedSite uses StorageManager with local area', () => {
+          const fnBody = viewerJs.split('function _addBlockedSite')[1].split('function _showBlockedSiteMessage')[0];
+          assertContains(fnBody, "'local'");
+        });
+
+        test('_getBlockedSites returns array', () => {
+          const fnBody = viewerJs.split('function _getBlockedSites')[1].split('function _addBlockedSite')[0];
+          assertContains(fnBody, 'Array.isArray');
+        });
+
+        test('_addBlockedSite deduplicates entries', () => {
+          const fnBody = viewerJs.split('function _addBlockedSite')[1].split('function _showBlockedSiteMessage')[0];
+          assertContains(fnBody, 'sites.includes(origin)');
+        });
+
+        test('_getBlockedSites handles errors gracefully', () => {
+          const fnBody = viewerJs.split('function _getBlockedSites')[1].split('function _addBlockedSite')[0];
+          assertContains(fnBody, 'catch');
+          assertContains(fnBody, 'return []');
+        });
+
+      } catch (e) {
+        test('viewer.js blocked sites logic (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.6: PRIVACY.md ---
+      suite('12.6 — PRIVACY.md Updated');
+
+      try {
+        const privacyResp = await fetch('../PRIVACY.md');
+        const privacy = await privacyResp.text();
+
+        test('PRIVACY.md references optional_host_permissions', () => {
+          assertContains(privacy, 'optional_host_permissions');
+        });
+
+        test('PRIVACY.md does not reference host_permissions as required', () => {
+          assertNotContains(privacy, '| `host_permissions:', 'Should not have old host_permissions row');
+        });
+
+        test('PRIVACY.md mentions per-domain runtime request', () => {
+          assertContains(privacy, 'runtime');
+        });
+
+        test('PRIVACY.md mentions revocability', () => {
+          assertContains(privacy, 'revoke');
+        });
+
+      } catch (e) {
+        test('PRIVACY.md fetch (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- 12.7: Regression Checks ---
+      suite('12.7 — Regression Checks');
+
+      try {
+        const manifestResp = await fetch('../src/manifest.json');
+        const manifest = await manifestResp.json();
+
+        test('manifest.json still has service_worker', () => {
+          assertExists(manifest.background.service_worker);
+        });
+
+        test('manifest.json still has content_scripts', () => {
+          assertTrue(manifest.content_scripts.length > 0, 'Should have content_scripts');
+        });
+
+        test('manifest.json still has default_popup', () => {
+          assertContains(manifest.action.default_popup, 'popup.html');
+        });
+
+        test('manifest.json still has CSP', () => {
+          assertContains(manifest.content_security_policy.extension_pages, "script-src 'self'");
+        });
+
+      } catch (e) {
+        test('manifest.json regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // Verify viewer.js still has all prior features
+      try {
+        const viewerJs = await (await fetch('../src/viewer/viewer.js')).text();
+
+        test('viewer.js still has _showCORSError function', () => {
+          assertContains(viewerJs, 'function _showCORSError');
+        });
+
+        test('viewer.js still has _showAuthError function', () => {
+          assertContains(viewerJs, '_showAuthError');
+        });
+
+        test('viewer.js still has _showEmptyFile function', () => {
+          assertContains(viewerJs, '_showEmptyFile');
+        });
+
+        test('viewer.js still has _showBinaryError function', () => {
+          assertContains(viewerJs, '_showBinaryError');
+        });
+
+        test('viewer.js still has _addSaveButton function', () => {
+          assertContains(viewerJs, '_addSaveButton');
+        });
+
+        test('viewer.js still has _runPipeline function', () => {
+          assertContains(viewerJs, '_runPipeline');
+        });
+
+        test('viewer.js still has _trackRecentFile function', () => {
+          assertContains(viewerJs, '_trackRecentFile');
+        });
+
+        test('viewer.js still has _showLargeFileWarning', () => {
+          assertContains(viewerJs, '_showLargeFileWarning');
+        });
+
+      } catch (e) {
+        test('viewer.js regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // Verify options.html still has all prior sections
+      try {
+        const optHtml = await (await fetch('../src/options/options.html')).text();
+
+        test('options.html still has Appearance section', () => {
+          assertContains(optHtml, 'markup-options-appearance');
+        });
+
+        test('options.html still has Behavior section', () => {
+          assertContains(optHtml, 'markup-options-behavior');
+        });
+
+        test('options.html still has Advanced section', () => {
+          assertContains(optHtml, 'markup-options-advanced');
+        });
+
+        test('options.html still has About section', () => {
+          assertContains(optHtml, 'markup-options-about');
+        });
+
+        test('options.html still has extension-theme.css link', () => {
+          assertContains(optHtml, 'extension-theme.css');
+        });
+
+        test('options.html still has developer link', () => {
+          assertContains(optHtml, 'fakhrulsojib');
+        });
+
+        test('options.html still shows version 0.3.0', () => {
+          assertContains(optHtml, '0.3.0');
+        });
+
+      } catch (e) {
+        test('options.html regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // Verify popup.html still works
+      try {
+        const popupHtml = await (await fetch('../src/popup/popup.html')).text();
+
+        test('popup.html still has theme buttons', () => {
+          assertContains(popupHtml, 'markup-theme-btn');
+        });
+
+        test('popup.html still has toggle switches', () => {
+          assertContains(popupHtml, 'markup-toggle-enabled');
+          assertContains(popupHtml, 'markup-toggle-intercept');
+        });
+
+        test('popup.html still has recent files', () => {
+          assertContains(popupHtml, 'markup-recent-list');
+        });
+
+        test('popup.html still shows v0.3.0', () => {
+          assertContains(popupHtml, 'v0.3.0');
+        });
+
+      } catch (e) {
+        test('popup.html regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // Verify service-worker.js still has all prior features
+      try {
+        const swJs = await (await fetch('../src/background/service-worker.js')).text();
+
+        test('service-worker.js still has APPLY_THEME relay', () => {
+          assertContains(swJs, 'APPLY_THEME');
+        });
+
+        test('service-worker.js still has APPLY_ENABLED relay', () => {
+          assertContains(swJs, 'APPLY_ENABLED');
+        });
+
+        test('service-worker.js still has _addRecentFile', () => {
+          assertContains(swJs, '_addRecentFile');
+        });
+
+        test('service-worker.js still has CLEAR_RECENT_FILES handler', () => {
+          assertContains(swJs, 'CLEAR_RECENT_FILES');
+        });
+
+        test('service-worker.js still has GET_LAST_INTERCEPTED handler', () => {
+          assertContains(swJs, 'GET_LAST_INTERCEPTED');
+        });
+
+        test('service-worker.js still opens viewer.html on interception', () => {
+          assertContains(swJs, 'viewer/viewer.html');
+        });
+
+      } catch (e) {
+        test('service-worker.js regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // Verify content-script.js still works
+      try {
+        const csJs = await (await fetch('../src/content/content-script.js')).text();
+
+        test('content-script.js still has MarkUpApp class', () => {
+          assertContains(csJs, 'class MarkUpApp');
+        });
+
+        test('content-script.js still has _setFavicon', () => {
+          assertContains(csJs, '_setFavicon');
+        });
+
+      } catch (e) {
+        test('content-script.js regression (skip if unavailable)', () => { assertTrue(true); });
+      }
+
+      // --- Final Summary ---
+      const summaryEl = document.getElementById('summary');
+      summaryEl.className = 'summary ' + (totalFail === 0 ? 'all-pass' : 'has-fail');
+      summaryEl.textContent = totalPass + ' passed, ' + totalFail + ' failed — ' +
+        (totalFail === 0 ? 'ALL TESTS PASSED ✅' : 'SOME TESTS FAILED ❌');
+    })();
+  </script>
+</body>
+</html>

@@ -39,7 +39,7 @@ This data stays on your device (and syncs to your other Chrome instances via you
 | `scripting` | Inject the rendering pipeline into Markdown pages |
 | `tabs` | Detect when tabs navigate to Markdown URLs |
 | `downloads` | Intercept `.md` downloads to render instead of saving |
-| `host_permissions: <all_urls>` | Fetch Markdown content from any URL when intercepting downloads (e.g., from Slack, Google Chat) |
+| `optional_host_permissions: <all_urls>` | Fetch Markdown content from download sources — requested per-domain at runtime (not at install time). You can revoke access anytime in Options. |
 
 No permission is used to collect or transmit user data.
 

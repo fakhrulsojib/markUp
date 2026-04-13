@@ -20,6 +20,7 @@
 | 10 | ✅ Done | 2026-04-13 | Download interception, viewer.html, popup notification |
 | 10.5 | ✅ Done | 2026-04-13 | Save fix, favicon, icon consolidation, clear history, version bump |
 | 11 | ✅ Done | 2026-04-13 | Themed extension pages: popup + options follow user's theme |
+| 12 | ✅ Done | 2026-04-13 | Optional host permissions, blocked/allowed site management |
 
 ---
 
@@ -83,6 +84,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | Strict CSP Mode | `cspStrict` | `false` | Options | Sanitizer strict config → re-render |
 | Debug Logging | `debugLog` | `false` | Options | Logger._enabled flag |
 | Render Downloads | `interceptDownloads` | `true` | Popup + Options | service-worker download listener |
+| Blocked Sites | `blockedSites` | `[]` | Options (local storage) | viewer.js + service-worker download handler |
 
 ### MessageBus Actions (Settings Relay)
 
@@ -377,7 +379,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | `"downloads"` permission added | Required for `chrome.downloads.onDeterminingFilename` |
 | SW relay also broadcasts via `chrome.runtime.sendMessage()` | Extension pages (viewer.html) can't receive `tabs.sendMessage()` |
 | viewer.js is an IIFE, not a class | Linear pipeline without detection logic — no need for MarkUpApp class |
-| `host_permissions: ["<all_urls>"]` added | Required for viewer.html to `fetch()` cross-origin download URLs (CORS bypass) |
+| `host_permissions` → `optional_host_permissions` | Moved `<all_urls>` to optional for faster CWS approval; viewer requests at runtime |
 
 ---
 
@@ -400,7 +402,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | File | Changes |
 |------|---------|
 | `src/utils/constants.js` | Added `DEFAULTS.INTERCEPT_DOWNLOADS: true` |
-| `src/manifest.json` | Added `"downloads"` permission + `"host_permissions": ["<all_urls>"]` |
+| `src/manifest.json` | Added `"downloads"` permission + `"optional_host_permissions": ["<all_urls>"]` |
 | `src/options/options.html` | Added "Render Markdown downloads" toggle in Behavior section |
 | `src/options/options.js` | Wired `interceptDownloads` load/save/reset + `APPLY_INTERCEPT_DOWNLOADS` |
 | `src/popup/popup.html` | Added intercept toggle + notification container |
@@ -417,8 +419,9 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 
 ### Post-implementation Bugfixes
 - **`settingsStorage` TDZ:** The async IIFE loading custom extensions referenced `settingsStorage` before its `const` declaration (temporal dead zone). Fixed by reordering declarations in `service-worker.js`.
-- **CORS for viewer fetch:** Added `host_permissions: ["<all_urls>"]` to manifest so `viewer.html` and the service worker can `fetch()` cross-origin URLs (Google Chat, Slack, etc.) without CORS blocks.
-- **`_showCORSError()` handler:** Dedicated CORS error card in viewer.js with "Download instead", "Open in browser" (direct navigation with session cookies), and "Try again" buttons. Acts as a safety net if `host_permissions` is ever insufficient.
+- **Optional host permissions:** Moved `<all_urls>` from `host_permissions` to `optional_host_permissions`. Viewer uses `chrome.permissions.request()` on user gesture.
+- **Permission request UI:** Viewer shows "Permission needed" card with "Grant access & load" button. Denied origins auto-saved to `blockedSites`.
+- **`_showCORSError()` handler:** Fallback CORS error card with "Download instead" and "Try again" buttons.
 
 ---
 
@@ -476,6 +479,31 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 |-----------|--------|
 | Separate `extension-theme.css` instead of reusing content theme CSS files | Content themes scope to `.markup-content` / `body.markup-body`; extension pages need `body`-level scoping without requiring markup-body class |
 | Extension-specific `--markup-ext-*` tokens added | Content themes lack variables for UI chrome (toggles, notices, danger buttons); extension pages need these tokens |
+
+---
+
+> **For future agents:** Always check this file's "Known Deviations" section, the "Settings Model" table, and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their Phase 1 skeletons.
+
+---
+
+## Phase 12 — Optional Host Permissions & Site Management
+**Steps 12.1–12.4 · All Completed**
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `src/manifest.json` | `host_permissions` → `optional_host_permissions` |
+| `src/viewer/viewer.js` | Pre-fetch permission check, blocked site check, `_showPermissionRequest()`, `_showBlockedSiteMessage()`, `_getBlockedSites()`, `_addBlockedSite()` |
+| `src/background/service-worker.js` | Blocked site check in `_handleMarkdownDownload()` before interception |
+| `src/options/options.html` | New "Site Permissions" section with allowed/blocked lists |
+| `src/options/options.js` | `_loadSitePermissions()`, `_renderAllowedSites()`, `_renderBlockedSites()` |
+| `src/options/options.css` | `.markup-site-list`, `.markup-site-origin`, `.markup-site-remove-btn` styles |
+
+### Key Decisions
+- **`optional_host_permissions` over `host_permissions`:** CWS reviewers scrutinize `<all_urls>` at install time. Optional permissions request access at runtime via user gesture — faster approval, better trust signals.
+- **Blocked sites persist in `chrome.storage.local`:** Denied origins are stored as an array of `"origin/*"` strings. Service worker checks this list before intercepting downloads — blocked origins bypass the viewer entirely.
+- **Allowed sites queried live via `chrome.permissions.getAll()`:** No separate storage needed — Chrome already tracks granted optional permissions.
+- **"Download instead" button uses `chrome.downloads.download()`:** Sets `byExtensionId`, which the SW download handler already skips — avoids re-interception loop.
 
 ---
 

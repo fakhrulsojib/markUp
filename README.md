@@ -39,6 +39,7 @@ No apps to install, no copying into an online viewer. Just open your file.
 - 🔒 **Strict CSP Mode** — block external images and links for untrusted files
 - 📂 **Custom File Extensions** — add `.txt`, `.rst`, or any extension for detection
 - 📥 **Download Interception** — open `.md` downloads from Slack, email, etc. in a rendered tab instead of saving to disk
+- 🌐 **Site Permissions** — per-domain access control; blocked sites are remembered and managed in Options
 - 🖼️ **Branded Favicon** — MarkUp logo displayed in the browser tab for all rendered pages
 - 🗑️ **Clear File History** — one-click clear of recent files list in the popup
 - 🌗 **Themed Extension Pages** — popup and options pages follow your selected theme (light/dark/sepia)
@@ -90,6 +91,7 @@ Configure MarkUp via the **popup** (click extension icon) or the **Options page*
 | **Strict CSP Mode** | Options | Blocks external images and links |
 | **Debug Logging** | Options | Enables verbose console output |
 | **Render Downloads** | Popup + Options | Intercept `.md` downloads and render instead |
+| **Site Permissions** | Options | Manage allowed and blocked sites for download interception |
 
 All settings sync via `chrome.storage.sync` and apply in real time — no page refresh needed.
 
@@ -178,8 +180,10 @@ User opens .md file
 
 User clicks .md download (Slack, Chat, email)
   → Service Worker intercepts via chrome.downloads.onDeterminingFilename
+  → Check blocked sites list → blocked? allow normal download
   → Cancel download → Clean up partial file
   → Open viewer.html?url=<download-url>
+    → Check host permission → missing? show "Grant access" prompt
     → Fetch → Parse → Render → Highlight → TOC → Theme → UI
 ```
 
@@ -206,7 +210,7 @@ User clicks .md download (Slack, Chat, email)
 | `scripting` | Inject content script into Markdown pages |
 | `tabs` | Detect when new tabs navigate to Markdown URLs |
 | `downloads` | Intercept `.md` downloads and render instead of saving |
-| `host_permissions: <all_urls>` | Fetch Markdown content from any URL (needed for download interception from services like Google Chat, Slack) |
+| `optional_host_permissions: <all_urls>` | Fetch Markdown content from download sources (requested per-domain at runtime, not at install time) |
 
 ---
 
