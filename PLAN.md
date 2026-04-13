@@ -315,7 +315,7 @@ classDiagram
 | No remote code execution | All JS bundled locally; NO `eval()`, `new Function()`, or CDN `<script>` tags |
 | Content Security Policy | Explicit CSP in manifest: `"content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none';" }` |
 | Declarative Net Request | Use `declarativeNetRequest` if URL interception is needed (not `webRequest`) |
-| Permissions | Minimal: `"activeTab"`, `"storage"`, `"scripting"`, `"tabs"` |
+| Permissions | Minimal: `"activeTab"`, `"storage"`, `"scripting"`, `"tabs"`. Broad host access via `optional_host_permissions` (requested at runtime, not install) |
 
 ### 4.2 Content Security Policy (CSP)
 
@@ -941,15 +941,49 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 
 ---
 
-### Future Phases (Pipeline)
+### Phase 12 — Optional Host Permissions & Site Management ✅
 
-- **Phase 12:** Mermaid diagram rendering in fenced code blocks
-- **Phase 13:** Math/LaTeX rendering (KaTeX)
-- **Phase 14:** Custom CSS injection (user-provided stylesheets)
-- **Phase 15:** Multi-file wiki navigation (relative link following)
-- **Phase 16:** Chrome Web Store publication & auto-update
+> **Goal:** Move `<all_urls>` from `host_permissions` (install-time) to `optional_host_permissions` (runtime) for faster CWS approval and better user trust. Add blocked/allowed site management.
+
+#### Step 12.1 — Switch to Optional Host Permissions ✅
+
+- Moved `host_permissions: ["<all_urls>"]` → `optional_host_permissions: ["<all_urls>"]` in `manifest.json`.
+- Static content script matches (`file:///*/*.md`, `https://raw.githubusercontent.com/*`) provide implicit host access — no change needed.
+- Dynamic injection via `chrome.scripting.executeScript()` gracefully degrades for non-static URLs without permission.
+
+#### Step 12.2 — Viewer Permission Request Flow ✅
+
+- Before fetching, viewer.js checks:
+  1. Is origin in `blockedSites`? → Show blocked message, skip fetch.
+  2. Does `chrome.permissions.contains()` confirm access? → Fetch normally.
+  3. Otherwise → Show "Permission needed" card with "Grant access & load" button.
+- On **grant**: `chrome.permissions.request()` → page reloads → fetch succeeds.
+- On **deny**: Origin saved to `blockedSites` in `chrome.storage.local` → user won't be asked again.
+
+#### Step 12.3 — Service Worker Blocked Site Check ✅
+
+- `_handleMarkdownDownload()` reads `blockedSites` from `chrome.storage.local` before intercepting.
+- If download origin is blocked → download proceeds normally (no viewer redirect).
+
+#### Step 12.4 — Options Page Site Management ✅
+
+- New "Site Permissions" section in Options page between Advanced and About.
+- **Allowed Sites**: reads from `chrome.permissions.getAll()`, shows origin list with "Revoke" buttons.
+- **Blocked Sites**: reads from `chrome.storage.local` (`blockedSites` key), shows origin list with "Unblock" buttons.
+
+> ✅ **Verify:** Deny permission on viewer → site appears in blocked list. Download from blocked site → no interception. Unblock in Options → next download opens viewer again.
 
 ---
 
-> **End of PLAN.md — v0.3.0 | Phases 1–11 Complete, Phase 12+ Planned**
+### Future Phases (Pipeline)
+
+- **Phase 13:** Mermaid diagram rendering in fenced code blocks
+- **Phase 14:** Math/LaTeX rendering (KaTeX)
+- **Phase 15:** Custom CSS injection (user-provided stylesheets)
+- **Phase 16:** Multi-file wiki navigation (relative link following)
+- **Phase 17:** Chrome Web Store publication & auto-update
+
+---
+
+> **End of PLAN.md — v0.3.0 | Phases 1–12 Complete, Phase 13+ Planned**
 

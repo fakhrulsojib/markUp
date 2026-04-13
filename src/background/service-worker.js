@@ -481,6 +481,22 @@ async function _handleMarkdownDownload(downloadItem) {
   } catch (err) {
   }
 
+  // Check if the download origin is blocked by the user
+  try {
+    const localStore = new MARKUP_STORAGE_MANAGER('markup', 'local');
+    const blockedSites = await localStore.get('blockedSites');
+    if (Array.isArray(blockedSites)) {
+      try {
+        const origin = new URL(downloadUrl).origin + '/*';
+        if (blockedSites.includes(origin)) {
+          MARKUP_LOGGER.debug('ServiceWorker', 'Origin is blocked:', origin, '— allowing normal download.');
+          return;
+        }
+      } catch (_) {}
+    }
+  } catch (err) {
+  }
+
   try {
     await chrome.downloads.cancel(downloadItem.id);
   } catch (err) {

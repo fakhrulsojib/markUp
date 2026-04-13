@@ -63,6 +63,31 @@
 
     _showLoadingSpinner(_originalFilename);
 
+    // For http/https URLs, check permissions before fetching
+    if (_originalUrl.startsWith('http://') || _originalUrl.startsWith('https://')) {
+      const origin = _extractOrigin(_originalUrl);
+
+      // Check if user previously blocked this site
+      const blockedSites = await _getBlockedSites();
+      if (blockedSites.includes(origin)) {
+        _removeLoadingSpinner();
+        _showBlockedSiteMessage();
+        return;
+      }
+
+      // Check if we already have host permission
+      try {
+        const hasPermission = await chrome.permissions.contains({ origins: [origin] });
+        if (!hasPermission) {
+          _removeLoadingSpinner();
+          _showPermissionRequest();
+          return;
+        }
+      } catch (err) {
+        if (_Logger) { _Logger.debug('Viewer', 'Permission check failed:', err.message); }
+      }
+    }
+
     try {
       const response = await fetch(_originalUrl);
 
@@ -126,15 +151,15 @@
       if (_Logger) { _Logger.debug('Viewer', 'Fetch error:', err.message); }
 
       const isCORS = err instanceof TypeError;
-      const heading = isCORS
-        ? 'Blocked by cross-origin policy'
-        : 'Could not load file';
-      const message = isCORS
-        ? 'The server does not allow this extension to fetch the file directly (CORS restriction). ' +
-          'This is common with downloads from Google Chat, Slack, and similar services.'
-        : 'Failed to fetch the file: ' + (err.message || 'Unknown error.');
 
-      _showCORSError(heading, message);
+      if (isCORS && _originalUrl) {
+        _showPermissionRequest();
+      } else {
+        _showCORSError(
+          'Could not load file',
+          'Failed to fetch the file: ' + (err.message || 'Unknown error.')
+        );
+      }
     }
   }
 
@@ -653,15 +678,183 @@
     );
   }
 
+  // --- Blocked Sites Helpers ---
+
+  async function _getBlockedSites() {
+    try {
+      const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+      if (!StorageManagerClass) return [];
+      const localStore = new StorageManagerClass('markup', 'local');
+      const sites = await localStore.get('blockedSites');
+      return Array.isArray(sites) ? sites : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function _addBlockedSite(origin) {
+    try {
+      const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+      if (!StorageManagerClass) return;
+      const localStore = new StorageManagerClass('markup', 'local');
+      const sites = await _getBlockedSites();
+      if (!sites.includes(origin)) {
+        sites.push(origin);
+        await localStore.set('blockedSites', sites);
+      }
+    } catch (_) {}
+  }
+
+  function _showBlockedSiteMessage() {
+    const container = document.createElement('div');
+    container.className = 'markup-viewer-error';
+
+    const icon = document.createElement('div');
+    icon.className = 'markup-viewer-error-icon';
+    icon.textContent = '🚫';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Site blocked';
+
+    const p = document.createElement('p');
+    p.textContent = 'This site was previously blocked from accessing. You can unblock it in the Options page under "Site Permissions".';
+
+    const actions = document.createElement('div');
+    actions.className = 'markup-viewer-error-actions';
+
+    if (_originalUrl) {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'markup-viewer-btn markup-viewer-btn-primary';
+      downloadBtn.textContent = '📥 Download instead';
+      downloadBtn.addEventListener('click', function _onBlockedDownload() {
+        try {
+          chrome.downloads.download({
+            url: _originalUrl,
+            filename: _originalFilename || undefined,
+            saveAs: true,
+          });
+        } catch (err) {
+          console.warn('MarkUp Viewer: Download fallback failed:', err);
+        }
+      });
+      actions.appendChild(downloadBtn);
+    }
+
+    const optionsBtn = document.createElement('button');
+    optionsBtn.className = 'markup-viewer-btn markup-viewer-btn-secondary';
+    optionsBtn.textContent = '⚙️ Open Options';
+    optionsBtn.addEventListener('click', function _onOpenOptions() {
+      chrome.runtime.openOptionsPage();
+    });
+    actions.appendChild(optionsBtn);
+
+    container.appendChild(icon);
+    container.appendChild(h2);
+    container.appendChild(p);
+    container.appendChild(actions);
+
+    document.body.appendChild(container);
+  }
+
   /**
-   * Show a CORS-specific error card with "Download instead", "Open in browser", and "Try again" buttons.
-   * CORS failures are common with services like Google Chat, Slack, etc. that set no Access-Control-Allow-Origin.
-   * The "Open in browser" link lets the user navigate to the URL directly (browser applies session cookies).
-   *
-   * @param {string} heading - Error heading text.
-   * @param {string} message - Error detail message.
+   * Extract the origin from a URL string.
+   * @param {string} url
+   * @returns {string} Origin with trailing /* for Chrome permissions API.
    * @private
    */
+  function _extractOrigin(url) {
+    try {
+      const u = new URL(url);
+      return u.origin + '/*';
+    } catch (_) {
+      return url;
+    }
+  }
+
+  /**
+   * Show a permission request card when fetch fails due to missing host permission.
+   * The user must click the button (user gesture) for chrome.permissions.request() to work.
+   * @private
+   */
+  function _showPermissionRequest() {
+    const origin = _extractOrigin(_originalUrl);
+
+    const container = document.createElement('div');
+    container.className = 'markup-viewer-error';
+
+    const icon = document.createElement('div');
+    icon.className = 'markup-viewer-error-icon';
+    icon.textContent = '🔐';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Permission needed';
+
+    const p = document.createElement('p');
+    p.textContent = 'MarkUp needs access to this server to fetch the Markdown file. ' +
+      'This is a one-time permission per domain.';
+
+    const actions = document.createElement('div');
+    actions.className = 'markup-viewer-error-actions';
+
+    const grantBtn = document.createElement('button');
+    grantBtn.className = 'markup-viewer-btn markup-viewer-btn-primary';
+    grantBtn.textContent = '🔓 Grant access & load';
+
+    grantBtn.addEventListener('click', async function _onGrantAccess() {
+      grantBtn.disabled = true;
+      grantBtn.textContent = '⏳ Requesting...';
+
+      try {
+        const granted = await chrome.permissions.request({ origins: [origin] });
+        if (granted) {
+          if (_Logger) { _Logger.debug('Viewer', 'Permission granted for:', origin); }
+          window.location.reload();
+        } else {
+          grantBtn.textContent = '❌ Permission denied';
+          await _addBlockedSite(origin);
+          setTimeout(() => {
+            container.remove();
+            _showBlockedSiteMessage();
+          }, 1000);
+        }
+      } catch (err) {
+        console.warn('MarkUp Viewer: Permission request failed:', err);
+        container.remove();
+        _showCORSError(
+          'Could not request permission',
+          'The permission request failed: ' + (err.message || 'Unknown error.')
+        );
+      }
+    });
+
+    actions.appendChild(grantBtn);
+
+    if (_originalUrl) {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'markup-viewer-btn markup-viewer-btn-secondary';
+      downloadBtn.textContent = '📥 Download instead';
+      downloadBtn.addEventListener('click', function _onPermDownload() {
+        try {
+          chrome.downloads.download({
+            url: _originalUrl,
+            filename: _originalFilename || undefined,
+            saveAs: true,
+          });
+        } catch (err) {
+          console.warn('MarkUp Viewer: Download fallback failed:', err);
+        }
+      });
+      actions.appendChild(downloadBtn);
+    }
+
+    container.appendChild(icon);
+    container.appendChild(h2);
+    container.appendChild(p);
+    container.appendChild(actions);
+
+    document.body.appendChild(container);
+  }
+
   function _showCORSError(heading, message) {
     const container = document.createElement('div');
     container.className = 'markup-viewer-error';

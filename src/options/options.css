@@ -294,6 +294,60 @@ body {
   outline-offset: 2px;
 }
 
+/* --- Site Permission Lists --- */
+
+.markup-site-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.markup-site-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--markup-ext-hover-bg, #eaeef2);
+}
+
+.markup-site-list li:last-child {
+  border-bottom: none;
+}
+
+.markup-site-empty {
+  color: var(--markup-text-secondary, #656d76);
+  font-style: italic;
+  justify-content: center !important;
+  padding: 12px !important;
+}
+
+.markup-site-origin {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--markup-text-primary, #24292f);
+  word-break: break-all;
+}
+
+.markup-site-remove-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--markup-ext-danger-color, #cf222e);
+  background: transparent;
+  border: 1px solid var(--markup-ext-danger-color, #cf222e);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 12px;
+  transition: all 0.15s ease;
+}
+
+.markup-site-remove-btn:hover {
+  background: var(--markup-ext-danger-hover-bg, #ffebe9);
+}
+
 /* --- About --- */
 
 .markup-about-info {

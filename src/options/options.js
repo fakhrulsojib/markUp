@@ -62,6 +62,7 @@
     _wireAdvancedControls();
     _wireResetButton();
     _wireThemeRelay();
+    _loadSitePermissions();
   }
 
   /**
@@ -390,6 +391,109 @@
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', () => callback(el.checked));
+    }
+  }
+
+  // --- Site Permissions ---
+
+  async function _loadSitePermissions() {
+    await _renderAllowedSites();
+    await _renderBlockedSites();
+  }
+
+  async function _renderAllowedSites() {
+    const listEl = document.getElementById('markup-opt-allowed-sites');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+
+    try {
+      const perms = await chrome.permissions.getAll();
+      const origins = (perms.origins || []).filter(o => o !== '<all_urls>');
+
+      if (origins.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'markup-site-empty';
+        empty.textContent = 'No allowed sites';
+        listEl.appendChild(empty);
+        return;
+      }
+
+      origins.forEach(origin => {
+        const li = document.createElement('li');
+
+        const span = document.createElement('span');
+        span.className = 'markup-site-origin';
+        span.textContent = origin;
+
+        const btn = document.createElement('button');
+        btn.className = 'markup-site-remove-btn';
+        btn.textContent = 'Revoke';
+        btn.addEventListener('click', async () => {
+          try {
+            await chrome.permissions.remove({ origins: [origin] });
+            _loadSitePermissions();
+          } catch (err) {
+            console.warn('MarkUp Options: Failed to revoke permission:', err);
+          }
+        });
+
+        li.appendChild(span);
+        li.appendChild(btn);
+        listEl.appendChild(li);
+      });
+    } catch (err) {
+      console.warn('MarkUp Options: Failed to load permissions:', err);
+    }
+  }
+
+  async function _renderBlockedSites() {
+    const listEl = document.getElementById('markup-opt-blocked-sites');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+
+    try {
+      const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+      if (!StorageManagerClass) return;
+      const localStore = new StorageManagerClass('markup', 'local');
+      const sites = await localStore.get('blockedSites');
+      const blockedSites = Array.isArray(sites) ? sites : [];
+
+      if (blockedSites.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'markup-site-empty';
+        empty.textContent = 'No blocked sites';
+        listEl.appendChild(empty);
+        return;
+      }
+
+      blockedSites.forEach(origin => {
+        const li = document.createElement('li');
+
+        const span = document.createElement('span');
+        span.className = 'markup-site-origin';
+        span.textContent = origin;
+
+        const btn = document.createElement('button');
+        btn.className = 'markup-site-remove-btn';
+        btn.textContent = 'Unblock';
+        btn.addEventListener('click', async () => {
+          try {
+            const updated = blockedSites.filter(s => s !== origin);
+            await localStore.set('blockedSites', updated);
+            _loadSitePermissions();
+          } catch (err) {
+            console.warn('MarkUp Options: Failed to unblock site:', err);
+          }
+        });
+
+        li.appendChild(span);
+        li.appendChild(btn);
+        listEl.appendChild(li);
+      });
+    } catch (err) {
+      console.warn('MarkUp Options: Failed to load blocked sites:', err);
     }
   }
 

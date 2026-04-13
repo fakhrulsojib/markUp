@@ -437,8 +437,8 @@
           assertTrue(manifest.permissions.includes('downloads'), 'Should have downloads');
         });
 
-        test('manifest.json icons still reference icon-transparent.png', () => {
-          assertEqual(manifest.icons['16'], 'icons/icon-transparent.png');
+        test('manifest.json icons are correctly sized PNGs', () => {
+          assertEqual(manifest.icons['16'], 'icons/icon-16.png');
         });
 
       } catch (e) {
