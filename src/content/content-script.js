@@ -138,6 +138,30 @@
       const fileName = _getFileName();
       document.title = (fileName || 'Markdown') + ' — MarkUp';
     }
+
+    // Set favicon to the MarkUp logo
+    _setFavicon();
+  }
+
+  /**
+   * Set the page favicon to the MarkUp SVG icon.
+   * Removes any existing favicon first, then creates a new <link> element.
+   * Uses chrome.runtime.getURL() to resolve the extension-internal path.
+   */
+  function _setFavicon() {
+    try {
+      // Remove any existing favicon links
+      const existing = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+      existing.forEach(el => el.remove());
+
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/png';
+      link.href = chrome.runtime.getURL('icons/icon-transparent.png');
+      document.head.appendChild(link);
+    } catch (err) {
+      // Non-critical — skip silently
+    }
   }
 
   /**
