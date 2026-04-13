@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Phase 9.2 — Browser Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; background: #0d1117; color: #c9d1d9; }
+    h1 { font-size: 20px; margin-bottom: 4px; color: #58a6ff; }
+    .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+    .summary { padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 16px; font-weight: 600; }
+    .summary.pass { background: #0d2818; color: #3fb950; border: 1px solid #238636; }
+    .summary.fail { background: #2d1117; color: #f85149; border: 1px solid #da3633; }
+    .summary.running { background: #1a1e23; color: #d29922; border: 1px solid #9e6a03; }
+    .group { margin-bottom: 20px; }
+    .group-title { font-size: 15px; font-weight: 600; color: #58a6ff; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #21262d; }
+    .test { padding: 6px 12px; font-size: 13px; border-radius: 4px; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+    .test.pass { background: #0d2818; color: #3fb950; }
+    .test.fail { background: #2d1117; color: #f85149; }
+    .test .icon { font-size: 14px; flex-shrink: 0; }
+    .test .label { flex: 1; }
+    .test .detail { font-size: 11px; color: #8b949e; }
+  </style>
+</head>
+<body>
+
+<h1>Phase 9.2 — <code>debugLog</code> Toggle &amp; Logger Utility</h1>
+<p class="subtitle">Tests for Logger class, debug gating, and APPLY_DEBUG_LOG wiring</p>
+<div id="summary" class="summary running">⏳ Running tests…</div>
+<div id="results"></div>
+
+<script>
+// ==================== MOCK SETUP ====================
+
+// Mock chrome APIs
+window.chrome = {
+  storage: {
+    sync: {
+      get: function(keys, cb) {
+        const result = {};
+        if (typeof keys === 'string') {
+          // Single string key lookup
+          if (window.__mockStorage && window.__mockStorage[keys] !== undefined) {
+            result[keys] = window.__mockStorage[keys];
+          }
+        } else if (typeof keys === 'object' && !Array.isArray(keys)) {
+          for (const k of Object.keys(keys)) {
+            result[k] = (window.__mockStorage && window.__mockStorage[k] !== undefined)
+              ? window.__mockStorage[k]
+              : keys[k];
+          }
+        }
+        if (cb) cb(result);
+      },
+      set: function(items, cb) {
+        if (!window.__mockStorage) window.__mockStorage = {};
+        Object.assign(window.__mockStorage, items);
+        if (cb) cb();
+      },
+      remove: function(keys, cb) { if (cb) cb(); }
+    },
+    local: {
+      get: function(keys, cb) {
+        const result = {};
+        if (typeof keys === 'object' && !Array.isArray(keys)) {
+          for (const k of Object.keys(keys)) {
+            result[k] = (window.__mockLocalStorage && window.__mockLocalStorage[k] !== undefined)
+              ? window.__mockLocalStorage[k]
+              : keys[k];
+          }
+        }
+        if (cb) cb(result);
+      },
+      set: function(items, cb) {
+        if (!window.__mockLocalStorage) window.__mockLocalStorage = {};
+        Object.assign(window.__mockLocalStorage, items);
+        if (cb) cb();
+      },
+      remove: function(keys, cb) { if (cb) cb(); }
+    }
+  },
+  runtime: {
+    lastError: null,
+    sendMessage: function(msg, cb) { if (cb) cb({}); },
+    onMessage: {
+      _listeners: [],
+      addListener: function(fn) { this._listeners.push(fn); },
+      removeListener: function(fn) { this._listeners = this._listeners.filter(l => l !== fn); }
+    },
+    id: 'mock-extension-id'
+  },
+  tabs: {
+    query: function(q, cb) { if (cb) cb([]); },
+    sendMessage: function(tabId, msg, cb) { if (cb) cb({}); return Promise.resolve({}); }
+  }
+};
+
+// ==================== TEST FRAMEWORK ====================
+
+let _totalTests = 0;
+let _passedTests = 0;
+let _failedTests = 0;
+const _resultsEl = document.getElementById('results');
+const _summaryEl = document.getElementById('summary');
+let _currentGroup = null;
+
+function group(name) {
+  const div = document.createElement('div');
+  div.className = 'group';
+  const title = document.createElement('div');
+  title.className = 'group-title';
+  title.textContent = name;
+  div.appendChild(title);
+  _resultsEl.appendChild(div);
+  _currentGroup = div;
+}
+
+function test(name, fn) {
+  _totalTests++;
+  const row = document.createElement('div');
+  row.className = 'test';
+  try {
+    fn();
+    _passedTests++;
+    row.classList.add('pass');
+    row.innerHTML = `<span class="icon">✅</span><span class="label">${name}</span>`;
+  } catch (e) {
+    _failedTests++;
+    row.classList.add('fail');
+    row.innerHTML = `<span class="icon">❌</span><span class="label">${name}</span><span class="detail">${e.message}</span>`;
+  }
+  (_currentGroup || _resultsEl).appendChild(row);
+}
+
+async function testAsync(name, fn) {
+  _totalTests++;
+  const row = document.createElement('div');
+  row.className = 'test';
+  try {
+    await fn();
+    _passedTests++;
+    row.classList.add('pass');
+    row.innerHTML = `<span class="icon">✅</span><span class="label">${name}</span>`;
+  } catch (e) {
+    _failedTests++;
+    row.classList.add('fail');
+    row.innerHTML = `<span class="icon">❌</span><span class="label">${name}</span><span class="detail">${e.message}</span>`;
+  }
+  (_currentGroup || _resultsEl).appendChild(row);
+}
+
+function assert(condition, msg) {
+  if (!condition) throw new Error(msg || 'Assertion failed');
+}
+
+function assertEqual(actual, expected, msg) {
+  if (actual !== expected) {
+    throw new Error(msg || `Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
+  }
+}
+
+function updateSummary() {
+  if (_failedTests === 0) {
+    _summaryEl.className = 'summary pass';
+    _summaryEl.textContent = `✅ ALL PASSED (${_passedTests} tests)`;
+    document.title = `Phase 9.2 — ALL PASSED (${_passedTests} tests)`;
+  } else {
+    _summaryEl.className = 'summary fail';
+    _summaryEl.textContent = `❌ ${_failedTests} FAILED / ${_totalTests} total`;
+    document.title = `Phase 9.2 — ${_failedTests} FAILED`;
+  }
+}
+
+// ==================== LOAD SCRIPTS ====================
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadAll() {
+  await loadScript('../src/utils/constants.js');
+  await loadScript('../src/utils/logger.js');
+  await loadScript('../src/core/StorageManager.js');
+  await loadScript('../src/core/EventEmitter.js');
+  await loadScript('../src/core/MessageBus.js');
+  await loadScript('../src/core/FileDetector.js');
+}
+
+// ==================== TESTS ====================
+
+async function runTests() {
+  await loadAll();
+
+  // ---- Group 1: Logger class exists and exports correctly ----
+  group('Logger — Class Structure');
+
+  test('MARKUP_LOGGER is exported on globalThis', () => {
+    assert(typeof MARKUP_LOGGER !== 'undefined', 'MARKUP_LOGGER not found');
+  });
+
+  test('Logger has static debug() method', () => {
+    assert(typeof MARKUP_LOGGER.debug === 'function', 'debug is not a function');
+  });
+
+  test('Logger has static warn() method', () => {
+    assert(typeof MARKUP_LOGGER.warn === 'function', 'warn is not a function');
+  });
+
+  test('Logger has static error() method', () => {
+    assert(typeof MARKUP_LOGGER.error === 'function', 'error is not a function');
+  });
+
+  test('Logger has static init() method', () => {
+    assert(typeof MARKUP_LOGGER.init === 'function', 'init is not a function');
+  });
+
+  test('Logger has static setEnabled() method', () => {
+    assert(typeof MARKUP_LOGGER.setEnabled === 'function', 'setEnabled is not a function');
+  });
+
+  test('Logger has static isEnabled() method', () => {
+    assert(typeof MARKUP_LOGGER.isEnabled === 'function', 'isEnabled is not a function');
+  });
+
+  // ---- Group 2: Default state ----
+  group('Logger — Default State');
+
+  test('Logger._enabled defaults to false', () => {
+    // Reset to default
+    MARKUP_LOGGER.setEnabled(false);
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Default should be false');
+  });
+
+  test('Logger.debug() does NOT output when disabled', () => {
+    MARKUP_LOGGER.setEnabled(false);
+    let logged = false;
+    const origLog = console.log;
+    console.log = function() { logged = true; };
+    MARKUP_LOGGER.debug('Test', 'should not appear');
+    console.log = origLog;
+    assertEqual(logged, false, 'debug() should not call console.log when disabled');
+  });
+
+  // ---- Group 3: Enabled state ----
+  group('Logger — Enabled State');
+
+  test('Logger.debug() DOES output when enabled', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let logged = false;
+    let loggedArgs = [];
+    const origLog = console.log;
+    console.log = function(...args) { logged = true; loggedArgs = args; };
+    MARKUP_LOGGER.debug('TestCtx', 'hello', 42);
+    console.log = origLog;
+    assert(logged, 'debug() should call console.log when enabled');
+  });
+
+  test('Logger.debug() output includes context prefix [MarkUp:...]', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let loggedArgs = [];
+    const origLog = console.log;
+    console.log = function(...args) { loggedArgs = args; };
+    MARKUP_LOGGER.debug('MyModule', 'test message');
+    console.log = origLog;
+    assertEqual(loggedArgs[0], '[MarkUp:MyModule]', 'First arg should be context prefix');
+    assertEqual(loggedArgs[1], 'test message', 'Second arg should be the message');
+  });
+
+  test('Logger.debug() passes additional args', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let loggedArgs = [];
+    const origLog = console.log;
+    console.log = function(...args) { loggedArgs = args; };
+    MARKUP_LOGGER.debug('Ctx', 'msg', 1, 2, 3);
+    console.log = origLog;
+    assertEqual(loggedArgs.length, 5, 'Should have 5 args: prefix + msg + 3 extras');
+  });
+
+  // ---- Group 4: warn() and error() always output ----
+  group('Logger — warn() and error() Always Output');
+
+  test('Logger.warn() outputs when debug is disabled', () => {
+    MARKUP_LOGGER.setEnabled(false);
+    let warned = false;
+    const origWarn = console.warn;
+    console.warn = function() { warned = true; };
+    MARKUP_LOGGER.warn('Test', 'warning message');
+    console.warn = origWarn;
+    assert(warned, 'warn() should always call console.warn');
+  });
+
+  test('Logger.warn() outputs when debug is enabled', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let warned = false;
+    const origWarn = console.warn;
+    console.warn = function() { warned = true; };
+    MARKUP_LOGGER.warn('Test', 'warning message');
+    console.warn = origWarn;
+    assert(warned, 'warn() should always call console.warn');
+  });
+
+  test('Logger.error() outputs when debug is disabled', () => {
+    MARKUP_LOGGER.setEnabled(false);
+    let errored = false;
+    const origError = console.error;
+    console.error = function() { errored = true; };
+    MARKUP_LOGGER.error('Test', 'error message');
+    console.error = origError;
+    assert(errored, 'error() should always call console.error');
+  });
+
+  test('Logger.error() outputs when debug is enabled', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let errored = false;
+    const origError = console.error;
+    console.error = function() { errored = true; };
+    MARKUP_LOGGER.error('Test', 'error message');
+    console.error = origError;
+    assert(errored, 'error() should always call console.error');
+  });
+
+  test('Logger.warn() includes [MarkUp:...] prefix', () => {
+    let loggedArgs = [];
+    const origWarn = console.warn;
+    console.warn = function(...args) { loggedArgs = args; };
+    MARKUP_LOGGER.warn('WarnCtx', 'test');
+    console.warn = origWarn;
+    assertEqual(loggedArgs[0], '[MarkUp:WarnCtx]', 'warn prefix should match');
+  });
+
+  test('Logger.error() includes [MarkUp:...] prefix', () => {
+    let loggedArgs = [];
+    const origError = console.error;
+    console.error = function(...args) { loggedArgs = args; };
+    MARKUP_LOGGER.error('ErrCtx', 'test');
+    console.error = origError;
+    assertEqual(loggedArgs[0], '[MarkUp:ErrCtx]', 'error prefix should match');
+  });
+
+  // ---- Group 5: setEnabled() ----
+  group('Logger — setEnabled()');
+
+  test('setEnabled(true) enables debugging', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    assertEqual(MARKUP_LOGGER.isEnabled(), true);
+  });
+
+  test('setEnabled(false) disables debugging', () => {
+    MARKUP_LOGGER.setEnabled(false);
+    assertEqual(MARKUP_LOGGER.isEnabled(), false);
+  });
+
+  test('setEnabled("true") does NOT enable (truthy string rejected)', () => {
+    MARKUP_LOGGER.setEnabled("true");
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Only boolean true should enable');
+  });
+
+  test('setEnabled(1) does NOT enable (truthy number rejected)', () => {
+    MARKUP_LOGGER.setEnabled(1);
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Only boolean true should enable');
+  });
+
+  test('setEnabled(null) disables', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    MARKUP_LOGGER.setEnabled(null);
+    assertEqual(MARKUP_LOGGER.isEnabled(), false);
+  });
+
+  test('setEnabled(undefined) disables', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    MARKUP_LOGGER.setEnabled(undefined);
+    assertEqual(MARKUP_LOGGER.isEnabled(), false);
+  });
+
+  // ---- Group 6: init() reads from storage ----
+  group('Logger — init() Storage Integration');
+
+  await testAsync('init() reads debugLog=true from storage and enables', async () => {
+    // Pre-set storage
+    window.__mockStorage = { markup_debugLog: true };
+    MARKUP_LOGGER.setEnabled(false); // Reset
+    await MARKUP_LOGGER.init();
+    assertEqual(MARKUP_LOGGER.isEnabled(), true, 'Should be enabled after init with debugLog=true');
+  });
+
+  await testAsync('init() reads debugLog=false from storage and disables', async () => {
+    window.__mockStorage = { markup_debugLog: false };
+    MARKUP_LOGGER.setEnabled(true); // Set to enabled first
+    await MARKUP_LOGGER.init();
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Should be disabled after init with debugLog=false');
+  });
+
+  await testAsync('init() defaults to disabled when debugLog not in storage', async () => {
+    window.__mockStorage = {}; // No debugLog key
+    MARKUP_LOGGER.setEnabled(true); // Set to enabled first
+    await MARKUP_LOGGER.init();
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Should default to disabled');
+  });
+
+  await testAsync('init() sets _initialized flag', async () => {
+    window.__mockStorage = {};
+    await MARKUP_LOGGER.init();
+    assertEqual(MARKUP_LOGGER._initialized, true, '_initialized should be true after init');
+  });
+
+  // ---- Group 7: Toggle behavior (debug on → off → on) ----
+  group('Logger — Toggle Behavior');
+
+  test('Can toggle debug on then off in sequence', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    let logged = false;
+    const origLog = console.log;
+
+    // Should log when enabled
+    console.log = function() { logged = true; };
+    MARKUP_LOGGER.debug('Toggle', 'enabled');
+    console.log = origLog;
+    assert(logged, 'Should log when enabled');
+
+    // Disable
+    MARKUP_LOGGER.setEnabled(false);
+    logged = false;
+    console.log = function() { logged = true; };
+    MARKUP_LOGGER.debug('Toggle', 'disabled');
+    console.log = origLog;
+    assertEqual(logged, false, 'Should NOT log when disabled');
+
+    // Re-enable
+    MARKUP_LOGGER.setEnabled(true);
+    logged = false;
+    console.log = function() { logged = true; };
+    MARKUP_LOGGER.debug('Toggle', 're-enabled');
+    console.log = origLog;
+    assert(logged, 'Should log again when re-enabled');
+  });
+
+  // ---- Group 8: Constants ----
+  group('Constants — DEFAULTS.DEBUGLOG');
+
+  test('DEFAULTS.DEBUGLOG exists and is false', () => {
+    assert(typeof MARKUP_CONSTANTS !== 'undefined', 'MARKUP_CONSTANTS missing');
+    assert('DEBUGLOG' in MARKUP_CONSTANTS.DEFAULTS, 'DEBUGLOG not in DEFAULTS');
+    assertEqual(MARKUP_CONSTANTS.DEFAULTS.DEBUGLOG, false, 'DEBUGLOG should default to false');
+  });
+
+  // ---- Group 9: MessageBus APPLY_DEBUG_LOG handler ----
+  group('MessageBus — APPLY_DEBUG_LOG Relay');
+
+  test('MessageBus can register APPLY_DEBUG_LOG listener', () => {
+    const bus = new MARKUP_MESSAGE_BUS();
+    let handled = false;
+    bus.listen('APPLY_DEBUG_LOG', (payload) => {
+      handled = true;
+      return { success: true };
+    });
+    // Simulate message
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    assert(typeof listener === 'function', 'Listener should be registered');
+    bus.destroy();
+  });
+
+  test('APPLY_DEBUG_LOG handler updates Logger.setEnabled', () => {
+    MARKUP_LOGGER.setEnabled(false);
+    const bus = new MARKUP_MESSAGE_BUS();
+    bus.listen('APPLY_DEBUG_LOG', (payload) => {
+      if (payload) {
+        MARKUP_LOGGER.setEnabled(payload.debugLog === true);
+      }
+      return { success: true };
+    });
+
+    // Simulate the message
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    listener(
+      { action: 'APPLY_DEBUG_LOG', payload: { debugLog: true } },
+      { tab: { id: 1 } },
+      function sendResponse() {}
+    );
+    assertEqual(MARKUP_LOGGER.isEnabled(), true, 'Logger should be enabled after APPLY_DEBUG_LOG');
+    bus.destroy();
+  });
+
+  test('APPLY_DEBUG_LOG handler disables Logger when debugLog=false', () => {
+    MARKUP_LOGGER.setEnabled(true);
+    const bus = new MARKUP_MESSAGE_BUS();
+    bus.listen('APPLY_DEBUG_LOG', (payload) => {
+      if (payload) {
+        MARKUP_LOGGER.setEnabled(payload.debugLog === true);
+      }
+      return { success: true };
+    });
+
+    const listener = chrome.runtime.onMessage._listeners[chrome.runtime.onMessage._listeners.length - 1];
+    listener(
+      { action: 'APPLY_DEBUG_LOG', payload: { debugLog: false } },
+      { tab: { id: 1 } },
+      function sendResponse() {}
+    );
+    assertEqual(MARKUP_LOGGER.isEnabled(), false, 'Logger should be disabled after APPLY_DEBUG_LOG false');
+    bus.destroy();
+  });
+
+  // ---- Group 10: No unconditional console.log in source files ----
+  group('Source Code — No Unconditional console.log');
+
+  await testAsync('content-script.js has no unconditional console.log (excluding vendor)', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    // Find all console.log occurrences
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      // Match console.log but NOT inside Logger class or comments
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  await testAsync('service-worker.js has no unconditional console.log', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  await testAsync('popup.js has no unconditional console.log', async () => {
+    const resp = await fetch('../src/popup/popup.js');
+    const code = await resp.text();
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  await testAsync('options.js has no unconditional console.log', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  await testAsync('ThemeManager.js has no unconditional console.log', async () => {
+    const resp = await fetch('../src/core/ThemeManager.js');
+    const code = await resp.text();
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  await testAsync('ToolbarComponent.js has no unconditional console.log', async () => {
+    const resp = await fetch('../src/ui/ToolbarComponent.js');
+    const code = await resp.text();
+    const lines = code.split('\n');
+    const bareConsoleLogs = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('console.log') && !line.startsWith('//') && !line.startsWith('*')) {
+        bareConsoleLogs.push({ lineNum: i + 1, line: line });
+      }
+    }
+    assertEqual(bareConsoleLogs.length, 0,
+      `Found ${bareConsoleLogs.length} bare console.log: ${bareConsoleLogs.map(l => `L${l.lineNum}`).join(', ')}`);
+  });
+
+  // ---- Group 11: Logger.js internal integrity ----
+  group('Logger — logger.js File Integrity');
+
+  await testAsync('logger.js contains exactly 1 console.log (inside debug method)', async () => {
+    const resp = await fetch('../src/utils/logger.js');
+    const code = await resp.text();
+    const matches = code.match(/console\.log/g) || [];
+    assertEqual(matches.length, 1, `Expected exactly 1 console.log in logger.js, found ${matches.length}`);
+  });
+
+  await testAsync('logger.js contains exactly 1 console.warn (inside warn method)', async () => {
+    const resp = await fetch('../src/utils/logger.js');
+    const code = await resp.text();
+    const matches = code.match(/console\.warn/g) || [];
+    assertEqual(matches.length, 1, `Expected exactly 1 console.warn in logger.js, found ${matches.length}`);
+  });
+
+  await testAsync('logger.js contains exactly 1 console.error (inside error method)', async () => {
+    const resp = await fetch('../src/utils/logger.js');
+    const code = await resp.text();
+    const matches = code.match(/console\.error/g) || [];
+    assertEqual(matches.length, 1, `Expected exactly 1 console.error in logger.js, found ${matches.length}`);
+  });
+
+  // ---- Group 12: Manifest & HTML script inclusion ----
+  group('Manifest & HTML — logger.js Inclusion');
+
+  await testAsync('manifest.json includes utils/logger.js in content_scripts.js', async () => {
+    const resp = await fetch('../src/manifest.json');
+    const manifest = await resp.json();
+    const jsFiles = manifest.content_scripts[0].js;
+    assert(jsFiles.includes('utils/logger.js'), 'logger.js not found in manifest content_scripts.js');
+  });
+
+  await testAsync('manifest.json: logger.js appears after sanitizer.js', async () => {
+    const resp = await fetch('../src/manifest.json');
+    const manifest = await resp.json();
+    const jsFiles = manifest.content_scripts[0].js;
+    const sanitizerIdx = jsFiles.indexOf('utils/sanitizer.js');
+    const loggerIdx = jsFiles.indexOf('utils/logger.js');
+    assert(loggerIdx > sanitizerIdx, 'logger.js should come after sanitizer.js');
+  });
+
+  await testAsync('popup.html includes logger.js script', async () => {
+    const resp = await fetch('../src/popup/popup.html');
+    const html = await resp.text();
+    assert(html.includes('utils/logger.js') || html.includes('../utils/logger.js'),
+      'logger.js script not found in popup.html');
+  });
+
+  await testAsync('options.html includes logger.js script', async () => {
+    const resp = await fetch('../src/options/options.html');
+    const html = await resp.text();
+    assert(html.includes('utils/logger.js') || html.includes('../utils/logger.js'),
+      'logger.js script not found in options.html');
+  });
+
+  await testAsync('service-worker.js importScripts includes logger.js', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assert(code.includes("'../utils/logger.js'") || code.includes('"../utils/logger.js"'),
+      'logger.js not found in service-worker.js importScripts');
+  });
+
+  // ---- Group 13: Options page wiring ----
+  group('Options Page — APPLY_DEBUG_LOG Wiring');
+
+  await testAsync('options.js sends APPLY_DEBUG_LOG notification on debug toggle', async () => {
+    const resp = await fetch('../src/options/options.js');
+    const code = await resp.text();
+    assert(code.includes('APPLY_DEBUG_LOG'), 'APPLY_DEBUG_LOG not found in options.js');
+    assert(code.includes("_notifyContentScript('APPLY_DEBUG_LOG'"),
+      '_notifyContentScript APPLY_DEBUG_LOG call not found');
+  });
+
+  // ---- Group 14: Service worker relay ----
+  group('Service Worker — APPLY_DEBUG_LOG Relay');
+
+  await testAsync('service-worker.js has APPLY_DEBUG_LOG listener', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assert(code.includes("'APPLY_DEBUG_LOG'"), 'APPLY_DEBUG_LOG listener not found in service-worker.js');
+  });
+
+  await testAsync('service-worker.js APPLY_DEBUG_LOG handler calls setEnabled', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    assert(code.includes('MARKUP_LOGGER.setEnabled'), 'setEnabled not called in APPLY_DEBUG_LOG handler');
+  });
+
+  await testAsync('service-worker.js APPLY_DEBUG_LOG handler relays to tabs', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    // Find the APPLY_DEBUG_LOG handler section
+    const idx = code.indexOf("'APPLY_DEBUG_LOG'");
+    const handlerSection = code.substring(idx, idx + 500);
+    assert(handlerSection.includes('chrome.tabs.sendMessage'),
+      'APPLY_DEBUG_LOG handler should relay to tabs');
+  });
+
+  // ---- Group 15: Content script APPLY_DEBUG_LOG early listener ----
+  group('Content Script — APPLY_DEBUG_LOG Listener');
+
+  await testAsync('content-script.js has APPLY_DEBUG_LOG early bus listener', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assert(code.includes("'APPLY_DEBUG_LOG'"), 'APPLY_DEBUG_LOG not found in content-script.js');
+  });
+
+  await testAsync('content-script.js initializes Logger via _Logger.init()', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assert(code.includes('_Logger.init()'), 'Logger.init() call not found in content-script.js');
+  });
+
+  await testAsync('content-script.js uses _Logger.debug() for debug messages', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    const debugCalls = (code.match(/_Logger\.debug\(/g) || []).length;
+    assert(debugCalls >= 8, `Expected at least 8 _Logger.debug() calls, found ${debugCalls}`);
+  });
+
+  // ---- Group 16: Regression — console.warn/error preserved ----
+  group('Regression — console.warn and console.error Preserved');
+
+  await testAsync('content-script.js still has console.warn calls', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    const warnCount = (code.match(/console\.warn/g) || []).length;
+    assert(warnCount >= 5, `Expected at least 5 console.warn calls, found ${warnCount}`);
+  });
+
+  await testAsync('service-worker.js still has console.warn calls', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    const warnCount = (code.match(/console\.warn/g) || []).length;
+    assert(warnCount >= 3, `Expected at least 3 console.warn calls, found ${warnCount}`);
+  });
+
+  await testAsync('content-script.js still has console.error for pipeline errors', async () => {
+    const resp = await fetch('../src/content/content-script.js');
+    const code = await resp.text();
+    assert(code.includes('console.error'), 'console.error should still exist for critical errors');
+  });
+
+  // ---- Group 17: Dynamic injection includes logger.js ----
+  group('Dynamic Injection — logger.js Included');
+
+  await testAsync('service-worker.js dynamic injection files include logger.js', async () => {
+    const resp = await fetch('../src/background/service-worker.js');
+    const code = await resp.text();
+    // Find the executeScript files array
+    const execIdx = code.indexOf('chrome.scripting.executeScript');
+    const filesSection = code.substring(execIdx, execIdx + 1000);
+    assert(filesSection.includes("'utils/logger.js'"),
+      'logger.js not in dynamic injection files list');
+  });
+
+  // ---- Cleanup ----
+  MARKUP_LOGGER.setEnabled(false); // Reset after tests
+
+  // Update summary
+  updateSummary();
+}
+
+runTests().catch(err => {
+  console.error('Test runner error:', err);
+  _summaryEl.className = 'summary fail';
+  _summaryEl.textContent = '❌ Test runner crashed: ' + err.message;
+});
+</script>
+
+</body>
+</html>

@@ -16,7 +16,7 @@
 | 6 | ✅ Done | 2026-04-12 | UI components: toolbar, TOC, search, settings, keyboard, print |
 | 7 | ✅ Done | 2026-04-12 | Popup, options page, recent files, UX polish, a11y, packaging |
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
-| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Step 9.1 done) |
+| 9 | 🔨 In Progress | 2026-04-13 | Settings backend wiring (Steps 9.1–9.2 done) |
 
 ---
 
@@ -31,7 +31,7 @@ Content Script Pipeline (content-script.js → MarkUpApp class):
   → mount UI(Toolbar, TOC Panel, Search, Settings) → keyboard shortcuts
 
 Service Worker (service-worker.js):
-  importScripts → FileDetector + MessageBus + StorageManager
+  importScripts → FileDetector + MessageBus + StorageManager + Logger
   → tabs.onUpdated (dynamic injection) → MessageBus relays
 
 Communication:  popup/options → MessageBus.send() → service-worker relay
@@ -259,7 +259,7 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 ---
 
 ## Phase 9 — Settings Backend Wiring
-**Step 9.1 Completed · Steps 9.2–9.5 Pending**
+**Steps 9.1–9.2 Completed · Steps 9.3–9.6 Pending**
 
 ### Step 9.1 — `autoRender`, `autoDetect`, `enableFileUrl` ✅
 
@@ -277,11 +277,36 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 - `autoDetect` gate wraps dynamic injection in async IIFE (tabs.onUpdated doesn't support async callbacks).
 
 ### Remaining Steps
-- **9.2:** `debugLog` → `Logger` utility class
-- **9.3:** Custom file extensions → `FileDetector.setCustomExtensions()`
-- **9.4:** `cspStrict` → restrictive Sanitizer config
-- **9.5:** Tests & documentation
-- **9.6:** Investigate `autoDetect` / `autoRender` / `extensions` overlap
+- **9.3:** Investigate `autoDetect` / `autoRender` / `extensions` overlap
+- **9.4:** Custom file extensions → `FileDetector.setCustomExtensions()`
+- **9.5:** `cspStrict` → restrictive Sanitizer config
+- **9.6:** Tests & documentation
+
+---
+
+### Step 9.2 — `debugLog` → Logger Utility ✅
+
+**Files Created:**
+- `src/utils/logger.js` — Static `Logger` class (`MARKUP_LOGGER`): `debug()`, `warn()`, `error()`, `init()`, `setEnabled()`. Gates `debug()` behind cached `_enabled` flag. Output: `[MarkUp:Context] message`.
+
+**Files Modified:**
+- `src/utils/constants.js` — Added `DEFAULTS.DEBUGLOG: false`.
+- `src/manifest.json` — Added `utils/logger.js` to `content_scripts.js` array.
+- `src/content/content-script.js` — Replaced 10 `console.log()` → `_Logger.debug()`. Added `Logger.init()` early in `run()`. Added `APPLY_DEBUG_LOG` early bus listener.
+- `src/background/service-worker.js` — Added `logger.js` to `importScripts()` + dynamic injection list. Replaced 11 `console.log()` → `MARKUP_LOGGER.debug()`. Added `APPLY_DEBUG_LOG` relay handler.
+- `src/options/options.js` — Added `APPLY_DEBUG_LOG` notification on debug toggle change. Replaced 1 `console.log()`.
+- `src/options/options.html` — Added `logger.js` script tag.
+- `src/popup/popup.js` — Replaced 4 `console.log()` → `Logger.debug()`. Added `Logger.init()`.
+- `src/popup/popup.html` — Added `logger.js` script tag.
+- `src/core/ThemeManager.js` — Replaced 1 `console.log()` → `Logger.debug()`.
+- `src/ui/ToolbarComponent.js` — Replaced 1 `console.log()` → `Logger.debug()`.
+
+**Key Decisions:**
+- Static class (not instance-based) — Logger is a global singleton.
+- `_enabled` defaults to `false` — debug logs are OFF by default.
+- `warn()` and `error()` always output regardless of toggle.
+- `APPLY_DEBUG_LOG` wired as early bus listener (works even when pipeline short-circuits).
+- 28 total `console.log()` calls converted; all `console.warn()`/`console.error()` preserved.
 
 ---
 
@@ -297,6 +322,7 @@ Refactored `content-script.js` into `MarkUpApp` class — 12-step pipeline.
 | Phase 7 | `tests/phase7-browser-verify.html` | Phase 7 deliverables |
 | Phase 8 | `tests/phase8-browser-verify.html` | 78 tests |
 | Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 132 tests |
+| Phase 9.2 | `tests/phase9-step92-browser-verify.html` | 58 tests |
 
 ---
 

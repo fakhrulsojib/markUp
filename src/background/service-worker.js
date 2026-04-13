@@ -14,6 +14,7 @@
 // In MV3 service workers, importScripts() is used for non-module scripts.
 importScripts(
   '../utils/constants.js',
+  '../utils/logger.js',
   '../core/FileDetector.js',
   '../core/StorageManager.js',
   '../core/MessageBus.js'
@@ -48,6 +49,12 @@ const recentStorage = new MARKUP_STORAGE_MANAGER('markup', 'local');
 const settingsStorage = new MARKUP_STORAGE_MANAGER('markup', 'sync');
 
 /**
+ * Initialize Logger with debug setting from storage.
+ * Runs async — logs before init completes use the default (false = silent).
+ */
+MARKUP_LOGGER.init();
+
+/**
  * Maximum number of recent files to track.
  * @type {number}
  */
@@ -59,7 +66,7 @@ const MAX_RECENT_FILES = 10;
  * Fired when the extension is first installed, updated, or Chrome is updated.
  */
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('MarkUp installed.', `Reason: ${details.reason}`);
+  MARKUP_LOGGER.debug('ServiceWorker', 'Installed.', `Reason: ${details.reason}`);
 });
 
 // --- Dynamic Content Script Injection ---
@@ -104,7 +111,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     try {
       const autoDetect = await settingsStorage.get('autoDetect');
       if (autoDetect === false) {
-        console.log('MarkUp: Auto-detect disabled. Skipping dynamic injection for:', tab.url);
+        MARKUP_LOGGER.debug('ServiceWorker', 'Auto-detect disabled. Skipping dynamic injection for:', tab.url);
         return;
       }
     } catch (err) {
@@ -113,7 +120,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     }
 
     // Dynamically inject the content script
-    console.log('MarkUp: Dynamic injection for:', tab.url);
+    MARKUP_LOGGER.debug('ServiceWorker', 'Dynamic injection for:', tab.url);
 
   chrome.scripting.executeScript(
     {
@@ -124,6 +131,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         'utils/constants.js',
         'utils/dom-helpers.js',
         'utils/sanitizer.js',
+        'utils/logger.js',
         'core/EventEmitter.js',
         'core/FileDetector.js',
         'core/StorageManager.js',
@@ -150,7 +158,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         return;
       }
       injectedTabs.add(tabId);
-      console.log('MarkUp: Content script injected into tab', tabId);
+      MARKUP_LOGGER.debug('ServiceWorker', 'Content script injected into tab', tabId);
     }
   );
 
@@ -192,7 +200,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
  * Handle 'ping' action — used for connectivity testing.
  */
 messageBus.listen('ping', (payload, sender) => {
-  console.log('MarkUp: Received ping from', sender.tab ? sender.tab.url : 'extension');
+  MARKUP_LOGGER.debug('ServiceWorker', 'Received ping from', sender.tab ? sender.tab.url : 'extension');
   return { status: 'pong', timestamp: Date.now() };
 });
 
@@ -238,7 +246,7 @@ messageBus.listen('APPLY_THEME', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Theme relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Theme relay attempted.');
   }
   return { success: true };
 });
@@ -255,7 +263,7 @@ messageBus.listen('APPLY_FONT_SIZE', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Font size relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Font size relay attempted.');
   }
   return { success: true };
 });
@@ -272,7 +280,7 @@ messageBus.listen('APPLY_LINE_HEIGHT', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Line height relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Line height relay attempted.');
   }
   return { success: true };
 });
@@ -289,7 +297,7 @@ messageBus.listen('APPLY_FONT_FAMILY', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Font family relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Font family relay attempted.');
   }
   return { success: true };
 });
@@ -306,7 +314,7 @@ messageBus.listen('APPLY_AUTO_RENDER', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Auto-render relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Auto-render relay attempted.');
   }
   return { success: true };
 });
@@ -323,7 +331,27 @@ messageBus.listen('APPLY_ENABLE_FILE_URL', async (payload, sender) => {
       }
     }
   } catch (err) {
-    console.log('MarkUp: Enable file URL relay attempted.');
+    MARKUP_LOGGER.debug('ServiceWorker', 'Enable file URL relay attempted.');
+  }
+  return { success: true };
+});
+
+/**
+ * Handle 'APPLY_DEBUG_LOG' action — update own Logger state and relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_DEBUG_LOG', async (payload, sender) => {
+  // Update service worker's own Logger state
+  MARKUP_LOGGER.setEnabled(payload?.debugLog === true);
+  // Relay to all Markdown tabs
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_DEBUG_LOG', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    // Silent — don't log relay attempts for the logger itself
   }
   return { success: true };
 });

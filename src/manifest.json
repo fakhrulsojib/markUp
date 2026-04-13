@@ -51,6 +51,7 @@
         "utils/constants.js",
         "utils/dom-helpers.js",
         "utils/sanitizer.js",
+        "utils/logger.js",
         "core/EventEmitter.js",
         "core/FileDetector.js",
         "core/StorageManager.js",
