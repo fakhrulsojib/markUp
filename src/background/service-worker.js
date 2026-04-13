@@ -379,6 +379,23 @@ messageBus.listen('APPLY_EXTENSIONS', async (payload, sender) => {
   return { success: true };
 });
 
+/**
+ * Handle 'APPLY_CSP_STRICT' action — relay to active Markdown tabs.
+ */
+messageBus.listen('APPLY_CSP_STRICT', async (payload, sender) => {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && fileDetector.isMarkdownUrl(tab.url || '')) {
+        chrome.tabs.sendMessage(tab.id, { action: 'APPLY_CSP_STRICT', payload: payload }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    MARKUP_LOGGER.debug('ServiceWorker', 'CSP strict relay attempted.');
+  }
+  return { success: true };
+});
+
 // --- Utility Functions ---
 
 /**

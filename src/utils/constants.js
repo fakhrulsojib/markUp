@@ -67,6 +67,7 @@ const DEFAULTS = Object.freeze({
   ENABLED: true,
   DEBUGLOG: false,
   EXTENSIONS: '.md, .markdown, .mdown, .mkd, .mdx',
+  CSPSTRICT: false,
 });
 
 /**
