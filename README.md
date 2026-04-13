@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="#install"><img src="https://img.shields.io/badge/chrome-extension-4285F4?logo=googlechrome&logoColor=white" alt="Chrome Extension"></a>
-  <img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/manifest-V3-orange" alt="Manifest V3">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
@@ -38,6 +38,7 @@ No apps to install, no copying into an online viewer. Just open your file.
 - 🌐 **Works Everywhere** — local `file://` paths, GitHub raw URLs, and more
 - 🔒 **Strict CSP Mode** — block external images and links for untrusted files
 - 📂 **Custom File Extensions** — add `.txt`, `.rst`, or any extension for detection
+- 📥 **Download Interception** — open `.md` downloads from Slack, email, etc. in a rendered tab instead of saving to disk
 
 ---
 
@@ -85,6 +86,7 @@ Configure MarkUp via the **popup** (click extension icon) or the **Options page*
 | **Custom Extensions** | Options | Additional file extensions (e.g. `.txt, .rst`) |
 | **Strict CSP Mode** | Options | Blocks external images and links |
 | **Debug Logging** | Options | Enables verbose console output |
+| **Render Downloads** | Popup + Options | Intercept `.md` downloads and render instead |
 
 All settings sync via `chrome.storage.sync` and apply in real time — no page refresh needed.
 
@@ -116,6 +118,10 @@ src/
 │   ├── options.html
 │   ├── options.css
 │   └── options.js
+├── viewer/                # Download viewer page
+│   ├── viewer.html
+│   ├── viewer.js
+│   └── viewer.css
 ├── core/                  # Core modules
 │   ├── MarkdownParser.js  # marked wrapper (GFM)
 │   ├── Renderer.js        # Abstract base
@@ -165,6 +171,12 @@ User opens .md file
   → MarkUpApp.run()
     → Detect → Extract → Parse (marked) → Render (HtmlRenderer + Sanitizer)
     → Highlight (hljs) → Build TOC → Apply Theme → Mount UI
+
+User clicks .md download (Slack, Chat, email)
+  → Service Worker intercepts via chrome.downloads.onDeterminingFilename
+  → Cancel download → Clean up partial file
+  → Open viewer.html?url=<download-url>
+    → Fetch → Parse → Render → Highlight → TOC → Theme → UI
 ```
 
 ---
@@ -181,13 +193,26 @@ User opens .md file
 
 ---
 
+## 🔐 Permissions
+
+| Permission | Why |
+|------------|-----|
+| `activeTab` | Access current tab to detect and render Markdown |
+| `storage` | Save user preferences (theme, font, etc.) |
+| `scripting` | Inject content script into Markdown pages |
+| `tabs` | Detect when new tabs navigate to Markdown URLs |
+| `downloads` | Intercept `.md` downloads and render instead of saving |
+| `host_permissions: <all_urls>` | Fetch Markdown content from any URL (needed for download interception from services like Google Chat, Slack) |
+
+---
+
 ## 📦 Package for Distribution
 
 ```bash
 bash scripts/package.sh
 ```
 
-Creates `markup-extension-v0.2.0.zip` ready for Chrome Web Store or sideloading.
+Creates `markup-extension-v0.3.0.zip` ready for Chrome Web Store or sideloading.
 
 ---
 
@@ -204,7 +229,8 @@ tests/
 ├── phase6-browser-verify.html    # UI components (143 tests)
 ├── phase7-browser-verify.html    # Popup, options, polish
 ├── phase8-browser-verify.html    # UI refinements (78 tests)
-└── phase9-step{91-95}-browser-verify.html  # Settings wiring (345 tests)
+├── phase9-step{91-95}-browser-verify.html  # Settings wiring (345 tests)
+└── phase10-browser-verify.html   # Download interception (104 tests)
 ```
 
 Manual QA checklist: `tests/test-checklist.md`

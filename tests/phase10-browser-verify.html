@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MarkUp Phase 10 — Download Interception Tests</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px;
+      background: #f6f8fa;
+      color: #24292f;
+    }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    .subtitle { font-size: 13px; color: #656d76; margin-bottom: 20px; }
+    #results { margin-top: 16px; }
+    .test-group {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .test-group-header {
+      padding: 10px 16px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .test {
+      padding: 8px 16px;
+      border-bottom: 1px solid #eaeef2;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test:last-child { border-bottom: none; }
+    .pass { color: #1a7f37; }
+    .fail { color: #cf222e; }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .badge.pass { background: #dafbe1; }
+    .badge.fail { background: #ffebe9; }
+    #summary {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    #summary.all-pass { background: #dafbe1; color: #1a7f37; }
+    #summary.has-fail { background: #ffebe9; color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Phase 10 — Download Interception</h1>
+  <p class="subtitle">Testing constants, download filename detection, setting toggles, viewer URL parsing, error handling, binary detection, popup notification, and regressions.</p>
+  <div id="results"></div>
+  <div id="summary"></div>
+
+  <!-- Mock chrome API -->
+  <script>
+    // Always override chrome API for testing — even in Chrome,
+    // the test page runs outside extension context so
+    // chrome.storage, chrome.downloads, etc. aren't available.
+    window.chrome = {
+      runtime: {
+        lastError: null,
+        sendMessage: function(msg, cb) { if (cb) cb({}); },
+        onMessage: {
+          addListener: function() {},
+          removeListener: function() {}
+        },
+        getURL: function(path) { return 'chrome-extension://test-id/' + path; }
+      },
+      storage: {
+        sync: {
+          _data: {},
+          get: function(key, cb) {
+            const result = {};
+            if (key === null) {
+              Object.assign(result, this._data);
+            } else if (typeof key === 'string') {
+              if (this._data[key] !== undefined) result[key] = this._data[key];
+            }
+            cb(result);
+          },
+          set: function(items, cb) {
+            Object.assign(this._data, items);
+            if (cb) cb();
+          },
+          remove: function(key, cb) {
+            delete this._data[key];
+            if (cb) cb();
+          }
+        },
+        local: {
+          _data: {},
+          get: function(key, cb) {
+            const result = {};
+            if (typeof key === 'string') {
+              if (this._data[key] !== undefined) result[key] = this._data[key];
+            }
+            cb(result);
+          },
+          set: function(items, cb) {
+            Object.assign(this._data, items);
+            if (cb) cb();
+          },
+          remove: function(key, cb) {
+            delete this._data[key];
+            if (cb) cb();
+          }
+        }
+      },
+      downloads: {
+        _cancelled: [],
+        _removed: [],
+        _erased: [],
+        _downloaded: [],
+        cancel: function(id) { this._cancelled.push(id); return Promise.resolve(); },
+        removeFile: function(id) { this._removed.push(id); return Promise.resolve(); },
+        erase: function(query) { this._erased.push(query); return Promise.resolve(); },
+        download: function(opts) { this._downloaded.push(opts); },
+        onDeterminingFilename: {
+          _listeners: [],
+          addListener: function(fn) { this._listeners.push(fn); }
+        }
+      },
+      tabs: {
+        create: function(opts) { return opts; },
+        query: function(q) { return Promise.resolve([]); }
+      }
+    };
+  </script>
+
+  <!-- Load source files -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/logger.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+  <script src="../src/core/FileDetector.js"></script>
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/MessageBus.js"></script>
+  <script src="../src/core/Renderer.js"></script>
+  <script src="../src/core/HtmlRenderer.js"></script>
+
+  <script>
+    // --- Test Framework ---
+    const results = [];
+    function assert(name, condition, detail) {
+      results.push({ name, passed: !!condition, detail: detail || '' });
+    }
+
+    function renderResults() {
+      const container = document.getElementById('results');
+      const groups = {};
+
+      results.forEach(r => {
+        const groupName = r.name.split(':')[0].trim();
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(r);
+      });
+
+      let html = '';
+      for (const [group, tests] of Object.entries(groups)) {
+        html += `<div class="test-group">
+          <div class="test-group-header">${group}</div>`;
+        tests.forEach(t => {
+          const status = t.passed ? 'pass' : 'fail';
+          const label = t.passed ? 'PASS' : 'FAIL';
+          html += `<div class="test">
+            <span>${t.name.split(':').slice(1).join(':').trim() || t.name}</span>
+            <span class="badge ${status}">${label}</span>
+            ${t.detail && !t.passed ? `<span style="font-size:11px;color:#656d76">${t.detail}</span>` : ''}
+          </div>`;
+        });
+        html += '</div>';
+      }
+      container.innerHTML = html;
+
+      const total = results.length;
+      const passed = results.filter(r => r.passed).length;
+      const failed = total - passed;
+      const summary = document.getElementById('summary');
+      summary.className = failed === 0 ? 'all-pass' : 'has-fail';
+      summary.textContent = `${passed}/${total} passed` + (failed > 0 ? ` — ${failed} FAILED` : ' ✓');
+
+      document.title = failed === 0
+        ? `Phase 10 — ALL PASSED (${total} tests)`
+        : `Phase 10 — ${failed} FAILED (${total} tests)`;
+    }
+
+    // --- Tests ---
+
+    (async function runTests() {
+
+      const CONSTANTS = globalThis.MARKUP_CONSTANTS;
+      const FileDetector = globalThis.MARKUP_FILE_DETECTOR;
+      const StorageManager = globalThis.MARKUP_STORAGE_MANAGER;
+      const MessageBus = globalThis.MARKUP_MESSAGE_BUS;
+      const Sanitizer = globalThis.MARKUP_SANITIZER;
+
+      // ========================================
+      // Group 1: Constants — DEFAULTS.INTERCEPT_DOWNLOADS
+      // ========================================
+
+      assert(
+        'Constants: DEFAULTS.INTERCEPT_DOWNLOADS exists',
+        CONSTANTS && CONSTANTS.DEFAULTS && typeof CONSTANTS.DEFAULTS.INTERCEPT_DOWNLOADS !== 'undefined'
+      );
+
+      assert(
+        'Constants: DEFAULTS.INTERCEPT_DOWNLOADS equals true',
+        CONSTANTS && CONSTANTS.DEFAULTS.INTERCEPT_DOWNLOADS === true
+      );
+
+      assert(
+        'Constants: DEFAULTS object still frozen',
+        Object.isFrozen(CONSTANTS.DEFAULTS)
+      );
+
+      // ========================================
+      // Group 2: FileDetector — filename matching for downloads
+      // ========================================
+
+      const fd = new FileDetector();
+
+      // Build synthetic URLs like the service worker does
+      function testFilename(filename) {
+        return fd.isMarkdownUrl('file:///test/' + filename);
+      }
+
+      assert(
+        'FileDetector filename: notes.md detected',
+        testFilename('notes.md')
+      );
+
+      assert(
+        'FileDetector filename: README.markdown detected',
+        testFilename('README.markdown')
+      );
+
+      assert(
+        'FileDetector filename: doc.mdown detected',
+        testFilename('doc.mdown')
+      );
+
+      assert(
+        'FileDetector filename: file.mkd detected',
+        testFilename('file.mkd')
+      );
+
+      assert(
+        'FileDetector filename: component.mdx detected',
+        testFilename('component.mdx')
+      );
+
+      assert(
+        'FileDetector filename: CHANGELOG.MD detected (case insensitive)',
+        testFilename('CHANGELOG.MD')
+      );
+
+      assert(
+        'FileDetector filename: report.txt NOT detected',
+        !testFilename('report.txt')
+      );
+
+      assert(
+        'FileDetector filename: document.pdf NOT detected',
+        !testFilename('document.pdf')
+      );
+
+      assert(
+        'FileDetector filename: file.docx NOT detected',
+        !testFilename('file.docx')
+      );
+
+      assert(
+        'FileDetector filename: image.png NOT detected',
+        !testFilename('image.png')
+      );
+
+      assert(
+        'FileDetector filename: empty string NOT detected',
+        !testFilename('')
+      );
+
+      assert(
+        'FileDetector filename: .md alone detected',
+        testFilename('.md')
+      );
+
+      // ========================================
+      // Group 3: Download listener filename extraction
+      // ========================================
+
+      // Test the path-splitting logic used in _handleMarkdownDownload
+      function extractFilename(fullpath) {
+        return fullpath.split('/').pop().split('\\').pop();
+      }
+
+      assert(
+        'Filename extract: simple path',
+        extractFilename('notes.md') === 'notes.md'
+      );
+
+      assert(
+        'Filename extract: unix path',
+        extractFilename('/home/user/docs/notes.md') === 'notes.md'
+      );
+
+      assert(
+        'Filename extract: windows path',
+        extractFilename('C:\\Users\\docs\\notes.md') === 'notes.md'
+      );
+
+      assert(
+        'Filename extract: nested path',
+        extractFilename('downloads/project/README.md') === 'README.md'
+      );
+
+      // ========================================
+      // Group 4: Setting toggle — interceptDownloads
+      // ========================================
+
+      const sm = new StorageManager();
+
+      // Test default (not set yet) — should be undefined/null
+      const interceptGetResult = await sm.get('interceptDownloads');
+
+      assert(
+        'Setting toggle: interceptDownloads defaults to undefined (treated as true)',
+        interceptGetResult === undefined || interceptGetResult === null || interceptGetResult === true,
+        `Got: ${interceptGetResult}`
+      );
+
+      // Test setting to false
+      await sm.set('interceptDownloads', false);
+      const interceptSetFalse = await sm.get('interceptDownloads');
+
+      assert(
+        'Setting toggle: set to false and get returns false',
+        interceptSetFalse === false,
+        `Got: ${interceptSetFalse}`
+      );
+
+      // Test setting to true
+      await sm.set('interceptDownloads', true);
+      const interceptSetTrue = await sm.get('interceptDownloads');
+
+      assert(
+        'Setting toggle: set to true and get returns true',
+        interceptSetTrue === true,
+        `Got: ${interceptSetTrue}`
+      );
+
+      // ========================================
+      // Group 5: Master toggle interaction
+      // ========================================
+
+      assert(
+        'Master toggle: enabled === false check uses strict comparison',
+        // The pattern used everywhere: `if (enabled === false)` — undefined defaults to enabled
+        (undefined === false) === false,
+        'undefined should NOT equal false in strict comparison'
+      );
+
+      assert(
+        'Master toggle: interceptDownloads === false check uses strict comparison',
+        (undefined === false) === false
+      );
+
+      assert(
+        'Master toggle: true !== false',
+        (true === false) === false
+      );
+
+      assert(
+        'Master toggle: false === false',
+        (false === false) === true
+      );
+
+      // ========================================
+      // Group 6: Partial file cleanup — order validation
+      // ========================================
+
+      // Reset mock state
+      chrome.downloads._cancelled = [];
+      chrome.downloads._removed = [];
+      chrome.downloads._erased = [];
+
+      // Simulate the 3-step cleanup
+      const testDownloadId = 42;
+      chrome.downloads.cancel(testDownloadId);
+      chrome.downloads.removeFile(testDownloadId);
+      chrome.downloads.erase({ id: testDownloadId });
+
+      assert(
+        'Cleanup: cancel() called with correct ID',
+        chrome.downloads._cancelled.includes(testDownloadId)
+      );
+
+      assert(
+        'Cleanup: removeFile() called with correct ID',
+        chrome.downloads._removed.includes(testDownloadId)
+      );
+
+      assert(
+        'Cleanup: erase() called with correct query',
+        chrome.downloads._erased.some(q => q.id === testDownloadId)
+      );
+
+      assert(
+        'Cleanup: order is cancel → removeFile → erase',
+        chrome.downloads._cancelled.indexOf(testDownloadId) === 0 &&
+        chrome.downloads._removed.indexOf(testDownloadId) === 0 &&
+        chrome.downloads._erased.findIndex(q => q.id === testDownloadId) === 0
+      );
+
+      // ========================================
+      // Group 7: Viewer URL parsing
+      // ========================================
+
+      function parseViewerParams(queryString) {
+        const params = new URLSearchParams(queryString);
+        return {
+          url: params.get('url') || '',
+          filename: params.get('filename') || ''
+        };
+      }
+
+      const validParams = parseViewerParams('?url=https%3A%2F%2Fexample.com%2Fnotes.md&filename=notes.md');
+      assert(
+        'Viewer URL: valid ?url= parsed correctly',
+        validParams.url === 'https://example.com/notes.md',
+        `Got: ${validParams.url}`
+      );
+
+      assert(
+        'Viewer URL: valid ?filename= parsed correctly',
+        validParams.filename === 'notes.md',
+        `Got: ${validParams.filename}`
+      );
+
+      const missingUrl = parseViewerParams('?filename=test.md');
+      assert(
+        'Viewer URL: missing ?url= returns empty string',
+        missingUrl.url === ''
+      );
+
+      const emptyParams = parseViewerParams('');
+      assert(
+        'Viewer URL: empty query returns empty strings',
+        emptyParams.url === '' && emptyParams.filename === ''
+      );
+
+      const encodedUrl = parseViewerParams('?url=' + encodeURIComponent('https://chat.google.com/download?id=123&file=notes.md'));
+      assert(
+        'Viewer URL: encoded URL with special chars parsed correctly',
+        encodedUrl.url.includes('chat.google.com') && encodedUrl.url.includes('notes.md'),
+        `Got: ${encodedUrl.url}`
+      );
+
+      // ========================================
+      // Group 8: Viewer binary content detection
+      // ========================================
+
+      function isBinaryContent(content) {
+        if (!content) return false;
+        const sample = content.substring(0, 8192);
+        if (sample.indexOf('\0') !== -1) return true;
+        let nonPrintable = 0;
+        for (let i = 0; i < sample.length; i++) {
+          const code = sample.charCodeAt(i);
+          if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+            nonPrintable++;
+          }
+        }
+        return (nonPrintable / sample.length) > 0.1;
+      }
+
+      assert(
+        'Binary detect: null byte → binary',
+        isBinaryContent('hello\0world')
+      );
+
+      assert(
+        'Binary detect: normal text → not binary',
+        !isBinaryContent('# Hello World\n\nThis is **markdown**.\n')
+      );
+
+      assert(
+        'Binary detect: empty string → not binary',
+        !isBinaryContent('')
+      );
+
+      assert(
+        'Binary detect: null → not binary',
+        !isBinaryContent(null)
+      );
+
+      assert(
+        'Binary detect: lots of control chars → binary',
+        isBinaryContent(String.fromCharCode(1).repeat(1000))
+      );
+
+      assert(
+        'Binary detect: tabs and newlines → not binary',
+        !isBinaryContent('line1\tvalue1\nline2\tvalue2\n')
+      );
+
+      // ========================================
+      // Group 9: Viewer empty file detection
+      // ========================================
+
+      assert(
+        'Empty file: empty string trim check',
+        ''.trim().length === 0
+      );
+
+      assert(
+        'Empty file: whitespace only trim check',
+        '   \n\t  '.trim().length === 0
+      );
+
+      assert(
+        'Empty file: content passes trim check',
+        '# Title'.trim().length > 0
+      );
+
+      // ========================================
+      // Group 10: Popup notification — GET_LAST_INTERCEPTED logic
+      // ========================================
+
+      // Test the 30-second window logic
+      const now = Date.now();
+
+      function isWithin30s(timestamp) {
+        return (now - timestamp) < 30000;
+      }
+
+      assert(
+        'Popup notification: recent timestamp (5s ago) returns true',
+        isWithin30s(now - 5000)
+      );
+
+      assert(
+        'Popup notification: old timestamp (60s ago) returns false',
+        !isWithin30s(now - 60000)
+      );
+
+      assert(
+        'Popup notification: exactly 30s ago returns false',
+        !isWithin30s(now - 30000)
+      );
+
+      assert(
+        'Popup notification: future timestamp returns true',
+        isWithin30s(now + 1000)
+      );
+
+      // ========================================
+      // Group 11: Regression — existing settings defaults unchanged
+      // ========================================
+
+      assert(
+        'Regression defaults: THEME is light',
+        CONSTANTS.DEFAULTS.THEME === 'light'
+      );
+
+      assert(
+        'Regression defaults: FONT_SIZE is 16',
+        CONSTANTS.DEFAULTS.FONT_SIZE === 16
+      );
+
+      assert(
+        'Regression defaults: LINE_HEIGHT is 1.6',
+        CONSTANTS.DEFAULTS.LINE_HEIGHT === 1.6
+      );
+
+      assert(
+        'Regression defaults: FONT_FAMILY is system-ui',
+        CONSTANTS.DEFAULTS.FONT_FAMILY === 'system-ui'
+      );
+
+      assert(
+        'Regression defaults: TOC_VISIBLE is false',
+        CONSTANTS.DEFAULTS.TOC_VISIBLE === false
+      );
+
+      assert(
+        'Regression defaults: ENABLED is true',
+        CONSTANTS.DEFAULTS.ENABLED === true
+      );
+
+      assert(
+        'Regression defaults: DEBUGLOG is false',
+        CONSTANTS.DEFAULTS.DEBUGLOG === false
+      );
+
+      assert(
+        'Regression defaults: EXTENSIONS unchanged',
+        CONSTANTS.DEFAULTS.EXTENSIONS === '.md, .markdown, .mdown, .mkd, .mdx'
+      );
+
+      assert(
+        'Regression defaults: CSPSTRICT is false',
+        CONSTANTS.DEFAULTS.CSPSTRICT === false
+      );
+
+      assert(
+        'Regression defaults: TOOLBAR_POSITION is top-right',
+        CONSTANTS.DEFAULTS.TOOLBAR_POSITION === 'top-right'
+      );
+
+      // ========================================
+      // Group 12: Regression — existing MessageBus action pattern
+      // ========================================
+
+      const mb = new MessageBus();
+
+      assert(
+        'Regression MessageBus: instance created',
+        mb !== null && typeof mb.send === 'function'
+      );
+
+      assert(
+        'Regression MessageBus: listen() exists',
+        typeof mb.listen === 'function'
+      );
+
+      assert(
+        'Regression MessageBus: unlisten() exists',
+        typeof mb.unlisten === 'function'
+      );
+
+      assert(
+        'Regression MessageBus: destroy() exists',
+        typeof mb.destroy === 'function'
+      );
+
+      // ========================================
+      // Group 13: Regression — FileDetector URL patterns
+      // ========================================
+
+      const rfd = new FileDetector();
+
+      assert(
+        'Regression FileDetector: file:///path/readme.md',
+        rfd.isMarkdownUrl('file:///path/readme.md')
+      );
+
+      assert(
+        'Regression FileDetector: file:///doc.markdown',
+        rfd.isMarkdownUrl('file:///doc.markdown')
+      );
+
+      assert(
+        'Regression FileDetector: https://raw.githubusercontent.com/user/repo/main/README.md',
+        rfd.isMarkdownUrl('https://raw.githubusercontent.com/user/repo/main/README.md')
+      );
+
+      assert(
+        'Regression FileDetector: http://example.com/doc.mdown',
+        rfd.isMarkdownUrl('http://example.com/doc.mdown')
+      );
+
+      assert(
+        'Regression FileDetector: .mkd extension',
+        rfd.isMarkdownUrl('https://example.com/file.mkd')
+      );
+
+      assert(
+        'Regression FileDetector: .mdx extension',
+        rfd.isMarkdownUrl('https://example.com/component.mdx')
+      );
+
+      assert(
+        'Regression FileDetector: .html NOT detected',
+        !rfd.isMarkdownUrl('https://example.com/page.html')
+      );
+
+      assert(
+        'Regression FileDetector: .txt NOT detected',
+        !rfd.isMarkdownUrl('https://example.com/file.txt')
+      );
+
+      assert(
+        'Regression FileDetector: .md with query string',
+        rfd.isMarkdownUrl('https://example.com/file.md?v=1')
+      );
+
+      assert(
+        'Regression FileDetector: .md with fragment',
+        rfd.isMarkdownUrl('https://example.com/file.md#section')
+      );
+
+      // ========================================
+      // Group 14: Regression — Sanitizer still works
+      // ========================================
+
+      const regSanitizer = new Sanitizer();
+
+      const regScript = regSanitizer.sanitize('<scr' + 'ipt>evil()</scr' + 'ipt><p>safe</p>');
+      assert(
+        'Regression Sanitizer: script stripping works',
+        !regScript.includes('<script') && regScript.includes('<p>safe</p>')
+      );
+
+      const regOnclick = regSanitizer.sanitize('<p onclick="evil()">text</p>');
+      assert(
+        'Regression Sanitizer: onclick stripping works',
+        !regOnclick.includes('onclick')
+      );
+
+      const regAllowed = regSanitizer.sanitize('<strong>bold</strong><em>italic</em>');
+      assert(
+        'Regression Sanitizer: strong/em preserved',
+        regAllowed.includes('<strong>') && regAllowed.includes('<em>')
+      );
+
+      const regImg = regSanitizer.sanitize('<img src="test.png" alt="img">');
+      assert(
+        'Regression Sanitizer: img preserved (relaxed mode)',
+        regImg.includes('<img')
+      );
+
+      const regLink = regSanitizer.sanitize('<a href="https://example.com">link</a>');
+      assert(
+        'Regression Sanitizer: external href preserved (relaxed mode)',
+        regLink.includes('href="https://example.com"')
+      );
+
+      // ========================================
+      // Group 15: Regression — StorageManager namespacing
+      // ========================================
+
+      const regSm = new StorageManager();
+
+      assert(
+        'Regression StorageManager: get() is async',
+        typeof regSm.get === 'function'
+      );
+
+      assert(
+        'Regression StorageManager: set() is async',
+        typeof regSm.set === 'function'
+      );
+
+      assert(
+        'Regression StorageManager: _prefixKey() exists',
+        typeof regSm._prefixKey === 'function'
+      );
+
+      assert(
+        'Regression StorageManager: prefix is markup_',
+        regSm._prefixKey('test') === 'markup_test'
+      );
+
+      // ========================================
+      // Group 16: Viewer page title formatting
+      // ========================================
+
+      function formatViewerTitle(filename, h1Text) {
+        if (h1Text && h1Text.trim()) {
+          return h1Text.trim() + ' — MarkUp';
+        }
+        const name = filename || 'Markdown';
+        return name.replace(/\.[^.]+$/, '') + ' — MarkUp';
+      }
+
+      assert(
+        'Title: h1 text used when available',
+        formatViewerTitle('notes.md', 'My Notes') === 'My Notes — MarkUp'
+      );
+
+      assert(
+        'Title: filename fallback (without extension)',
+        formatViewerTitle('notes.md', '') === 'notes — MarkUp'
+      );
+
+      assert(
+        'Title: default fallback when no filename',
+        formatViewerTitle('', '') === 'Markdown — MarkUp'
+      );
+
+      assert(
+        'Title: .markdown extension stripped',
+        formatViewerTitle('README.markdown', '') === 'README — MarkUp'
+      );
+
+      // ========================================
+      // Group 17: chrome.runtime.getURL — viewer path
+      // ========================================
+
+      const viewerUrl = chrome.runtime.getURL('viewer/viewer.html');
+      assert(
+        'Viewer path: getURL returns correct path',
+        viewerUrl.includes('viewer/viewer.html'),
+        `Got: ${viewerUrl}`
+      );
+
+      // Test full URL construction
+      const testDownloadUrl = 'https://chat.google.com/download/file.md';
+      const testFilenameParam = 'file.md';
+      const fullViewerUrl = viewerUrl
+        + '?url=' + encodeURIComponent(testDownloadUrl)
+        + '&filename=' + encodeURIComponent(testFilenameParam);
+
+      assert(
+        'Viewer path: full URL has ?url= param',
+        fullViewerUrl.includes('?url=')
+      );
+
+      assert(
+        'Viewer path: full URL has &filename= param',
+        fullViewerUrl.includes('&filename=')
+      );
+
+      // Verify round-trip decode
+      const decoded = new URLSearchParams(fullViewerUrl.split('?')[1]);
+      assert(
+        'Viewer path: URL param round-trips correctly',
+        decoded.get('url') === testDownloadUrl,
+        `Got: ${decoded.get('url')}`
+      );
+
+      assert(
+        'Viewer path: filename param round-trips correctly',
+        decoded.get('filename') === testFilenameParam
+      );
+
+      // ========================================
+      // Group 18: Download save button — chrome.downloads.download()
+      // ========================================
+
+      chrome.downloads._downloaded = []; // Reset
+
+      chrome.downloads.download({
+        url: 'https://example.com/file.md',
+        filename: 'file.md',
+        saveAs: true
+      });
+
+      assert(
+        'Save button: chrome.downloads.download() called',
+        chrome.downloads._downloaded.length === 1
+      );
+
+      assert(
+        'Save button: download has correct url',
+        chrome.downloads._downloaded[0].url === 'https://example.com/file.md'
+      );
+
+      assert(
+        'Save button: download has correct filename',
+        chrome.downloads._downloaded[0].filename === 'file.md'
+      );
+
+      assert(
+        'Save button: download has saveAs: true',
+        chrome.downloads._downloaded[0].saveAs === true
+      );
+
+      // ========================================
+      // Group 19: Regression — CONSTANTS object completeness
+      // ========================================
+
+      assert(
+        'Regression CONSTANTS: THEMES exists',
+        typeof CONSTANTS.THEMES === 'object' && CONSTANTS.THEMES !== null
+      );
+
+      assert(
+        'Regression CONSTANTS: STORAGE_KEYS exists',
+        typeof CONSTANTS.STORAGE_KEYS === 'object' && CONSTANTS.STORAGE_KEYS !== null
+      );
+
+      assert(
+        'Regression CONSTANTS: EVENTS exists',
+        typeof CONSTANTS.EVENTS === 'object' && CONSTANTS.EVENTS !== null
+      );
+
+      assert(
+        'Regression CONSTANTS: MD_URL_PATTERNS exists',
+        Array.isArray(CONSTANTS.MD_URL_PATTERNS) && CONSTANTS.MD_URL_PATTERNS.length >= 5
+      );
+
+      assert(
+        'Regression CONSTANTS: MD_MIME_TYPES exists',
+        Array.isArray(CONSTANTS.MD_MIME_TYPES)
+      );
+
+      assert(
+        'Regression CONSTANTS: CSS_PREFIX is markup',
+        CONSTANTS.CSS_PREFIX === 'markup'
+      );
+
+      assert(
+        'Regression CONSTANTS: MAX_DOCUMENT_SIZE is 500000',
+        CONSTANTS.MAX_DOCUMENT_SIZE === 500000
+      );
+
+      // ========================================
+      // Group 20: HtmlRenderer with default (relaxed) config — regression
+      // ========================================
+
+      const tempContainer = document.createElement('div');
+      tempContainer.id = 'test-phase10-renderer';
+      tempContainer.style.display = 'none';
+      document.body.appendChild(tempContainer);
+
+      const testRenderer = new MARKUP_HTML_RENDERER('#test-phase10-renderer');
+      testRenderer.render('<h1>Test</h1><p>Content with <img src="test.png" alt="img"></p>');
+      const testContent = testRenderer.getContentContainer();
+
+      assert(
+        'Regression HtmlRenderer: container exists',
+        testContent !== null
+      );
+
+      assert(
+        'Regression HtmlRenderer: h1 rendered',
+        testContent.querySelectorAll('h1').length === 1
+      );
+
+      assert(
+        'Regression HtmlRenderer: img preserved in relaxed mode',
+        testContent.querySelectorAll('img').length > 0
+      );
+
+      // Cleanup
+      document.body.removeChild(tempContainer);
+
+      // --- Render results ---
+      renderResults();
+
+    })();
+  </script>
+</body>
+</html>

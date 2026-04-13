@@ -68,6 +68,7 @@ const DEFAULTS = Object.freeze({
   DEBUGLOG: false,
   EXTENSIONS: '.md, .markdown, .mdown, .mkd, .mdx',
   CSPSTRICT: false,
+  INTERCEPT_DOWNLOADS: true,
 });
 
 /**

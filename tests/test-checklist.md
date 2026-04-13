@@ -145,8 +145,6 @@
 - [ ] Zip loads as unpacked extension
 - [ ] Extension works identically from zip
 
----
-
 ## Cross-Browser Regression
 
 - [ ] All Phase 2 browser tests pass
@@ -155,7 +153,57 @@
 - [ ] All Phase 5 browser tests pass
 - [ ] All Phase 6 browser tests pass
 - [ ] All Phase 7 browser tests pass
+- [ ] All Phase 8 browser tests pass
+- [ ] All Phase 9 browser tests pass
+- [ ] All Phase 10 browser tests pass
 
 ---
 
-*Last updated: Phase 9 completion*
+## Phase 10: Download Interception
+
+### Settings & Toggles
+- [ ] "Render downloads" toggle visible in Popup
+- [ ] "Render Markdown downloads" toggle visible in Options → Behavior
+- [ ] Toggle ON: .md downloads are intercepted
+- [ ] Toggle OFF: .md downloads proceed normally
+- [ ] Master "Enable MarkUp" OFF: downloads not intercepted
+- [ ] Settings survive extension reload / browser restart
+
+### Download Interception
+- [ ] Click .md file download → viewer tab opens instead
+- [ ] Download bar does NOT show the intercepted file
+- [ ] No partial file left on disk
+- [ ] `.md`, `.markdown`, `.mdown`, `.mkd`, `.mdx` all detected
+- [ ] `.pdf`, `.txt`, `.docx` NOT intercepted (allowed to download)
+
+### Viewer Page
+- [ ] Viewer page contains toolbar, TOC, search, settings (same as content script)
+- [ ] Theme switching works in viewer
+- [ ] Font size / line height / font family settings apply live
+- [ ] Keyboard shortcuts work (Alt+T, Alt+F, Alt+D, Alt+P)
+- [ ] Page title set from first `<h1>` or filename
+- [ ] "Save file" button visible (bottom-left) — triggers Save As dialog
+- [ ] Print (Alt+P) works from viewer page
+
+### Viewer Edge Cases
+- [ ] Auth-required URL (401/403) → styled error card with "Download instead" + "Try again" buttons
+- [ ] Network/CORS failure → styled error card with "Download instead" + "Try again" buttons
+- [ ] Binary content → "Not a valid Markdown file" card with "Download instead" button
+- [ ] Empty file → "This file is empty" card
+- [ ] Large file (>1MB) → warning bar with "Load All" button
+
+### Popup Notification
+- [ ] After intercepting a download, open popup → notification banner appears
+- [ ] Notification shows filename (e.g., "📥 Rendered notes.md instead of downloading")
+- [ ] Notification auto-dismisses after 5 seconds
+- [ ] Opening popup after 30 seconds → no notification shown
+
+### Regression
+- [ ] Normal .md file browsing (file://, http://) still works
+- [ ] Theme persistence still works
+- [ ] Settings panel still loads all values correctly
+- [ ] Options page reset button resets download toggle to ON
+
+---
+
+*Last updated: Phase 10 completion*

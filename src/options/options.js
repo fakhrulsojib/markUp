@@ -93,10 +93,14 @@
 
       // Behavior
       const enabled = await storage.get('enabled');
+      const interceptDownloads = await storage.get('interceptDownloads');
       const extensions = await storage.get('extensions');
 
       const enabledEl = document.getElementById('markup-opt-enabled');
       if (enabledEl) enabledEl.checked = enabled !== false;
+
+      const interceptEl = document.getElementById('markup-opt-intercept-downloads');
+      if (interceptEl) interceptEl.checked = interceptDownloads !== false; // Default: true
 
       const extensionsEl = document.getElementById('markup-opt-extensions');
       if (extensionsEl && extensions) extensionsEl.value = extensions;
@@ -162,6 +166,11 @@
       await _notifyContentScript('APPLY_ENABLED', { enabled: checked });
     });
 
+    _wireToggle('markup-opt-intercept-downloads', async (checked) => {
+      await _saveSetting('interceptDownloads', checked);
+      await _notifyContentScript('APPLY_INTERCEPT_DOWNLOADS', { interceptDownloads: checked });
+    });
+
     const extensionsEl = document.getElementById('markup-opt-extensions');
     if (extensionsEl) {
       extensionsEl.addEventListener('change', async () => {
@@ -216,6 +225,7 @@
       await storage.set('lineHeight', DEFAULTS.LINE_HEIGHT);
       await storage.set('fontFamily', DEFAULTS.FONT_FAMILY);
       await storage.set('enabled', true);
+      await storage.set('interceptDownloads', true);
       await storage.set('extensions', '');
       await storage.set('cspStrict', false);
       await storage.set('debugLog', false);

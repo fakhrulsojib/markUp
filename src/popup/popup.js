@@ -65,6 +65,7 @@
     await _loadThemeState();
     await _loadToggleStates();
     await _loadRecentFiles();
+    await _checkLastIntercepted();
 
     // Wire event listeners
     _wireThemeButtons();
@@ -164,11 +165,16 @@
 
     try {
       const enabled = await storage.get('enabled');
+      const interceptDownloads = await storage.get('interceptDownloads');
 
       const enabledToggle = document.getElementById('markup-toggle-enabled');
+      const interceptToggle = document.getElementById('markup-toggle-intercept');
 
       if (enabledToggle) {
         enabledToggle.checked = enabled !== false; // Default: true
+      }
+      if (interceptToggle) {
+        interceptToggle.checked = interceptDownloads !== false; // Default: true
       }
     } catch (err) {
       console.warn('Popup: Failed to load toggle states:', err);
@@ -181,9 +187,13 @@
    */
   function _wireToggleSwitches() {
     const enabledToggle = document.getElementById('markup-toggle-enabled');
+    const interceptToggle = document.getElementById('markup-toggle-intercept');
 
     if (enabledToggle) {
       enabledToggle.addEventListener('change', _onEnabledToggle);
+    }
+    if (interceptToggle) {
+      interceptToggle.addEventListener('change', _onInterceptToggle);
     }
   }
 
@@ -210,6 +220,71 @@
         if (_Log) { _Log.debug('Popup', 'Enabled toggle notification sent.'); }
       }
     }
+  }
+
+  /**
+   * Handle Render Downloads toggle change.
+   * @param {Event} event
+   * @private
+   */
+  async function _onInterceptToggle(event) {
+    const isEnabled = event.target.checked;
+    if (storage) {
+      try {
+        await storage.set('interceptDownloads', isEnabled);
+      } catch (err) {
+        console.warn('Popup: Failed to save intercept toggle:', err);
+      }
+    }
+    if (messageBus) {
+      try {
+        await messageBus.send('APPLY_INTERCEPT_DOWNLOADS', { interceptDownloads: isEnabled });
+      } catch (err) {
+        const _Log = (typeof MARKUP_LOGGER !== 'undefined') ? MARKUP_LOGGER : null;
+        if (_Log) { _Log.debug('Popup', 'Intercept toggle notification sent.'); }
+      }
+    }
+  }
+
+  /**
+   * Check for recently intercepted downloads and show notification.
+   * @private
+   */
+  async function _checkLastIntercepted() {
+    if (!messageBus) return;
+
+    try {
+      const response = await messageBus.send('GET_LAST_INTERCEPTED');
+      if (response && response.filename) {
+        _showInterceptNotice(response.filename);
+      }
+    } catch (err) {
+      // Service worker may not have the handler — that's OK
+    }
+  }
+
+  /**
+   * Show an ephemeral notification about an intercepted download.
+   * @param {string} filename - The intercepted filename.
+   * @private
+   */
+  function _showInterceptNotice(filename) {
+    const noticeEl = document.getElementById('markup-popup-intercept-notice');
+    if (!noticeEl) return;
+
+    noticeEl.textContent = '📥 Rendered ' + filename + ' instead of downloading';
+    noticeEl.classList.remove('hidden');
+    noticeEl.classList.add('visible');
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      noticeEl.classList.remove('visible');
+      noticeEl.classList.add('fade-out');
+      setTimeout(() => {
+        noticeEl.classList.add('hidden');
+        noticeEl.classList.remove('fade-out');
+      }, 300);
+    }, 5000);
   }
 
   // --- Recent Files ---

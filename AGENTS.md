@@ -17,6 +17,7 @@
 | 7 | ✅ Done | 2026-04-12 | Popup, options page, recent files, UX polish, a11y, packaging |
 | 8 | ✅ Done | 2026-04-13 | Theme-aware UI, draggable toolbar, live settings relay |
 | 9 | ✅ Done | 2026-04-13 | Settings backend wiring (enabled, debugLog, extensions, cspStrict) |
+| 10 | ✅ Done | 2026-04-13 | Download interception, viewer.html, popup notification |
 
 ---
 
@@ -30,13 +31,20 @@ Content Script Pipeline (content-script.js → MarkUpApp class):
   → highlight(hljs) → TOC(TocGenerator) → theme(ThemeManager)
   → mount UI(Toolbar, TOC Panel, Search, Settings) → keyboard shortcuts
 
+Viewer Page Pipeline (viewer/viewer.js → IIFE controller):
+  parse URL params → fetch(url) → parse(marked) → render(HtmlRenderer+Sanitizer)
+  → highlight(hljs) → TOC → theme → mount UI → keyboard → save button
+  (Same pipeline as content script, different entry: no detection logic)
+
 Service Worker (service-worker.js):
   importScripts → FileDetector + MessageBus + StorageManager + Logger
   → tabs.onUpdated (dynamic injection, gated by `enabled` setting)
+  → downloads.onDeterminingFilename (intercept .md downloads → viewer.html)
   → MessageBus relays (theme, font, extensions, cspStrict, etc.)
 
 Communication:  popup/options → MessageBus.send() → service-worker relay
                 → chrome.tabs.sendMessage() → content-script MessageBus.listen()
+                → chrome.runtime.sendMessage() → viewer.js MessageBus.listen()
 
 Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no ES modules in content scripts)
 ```
@@ -72,6 +80,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | Custom Extensions | `extensions` | `'.md, .markdown, .mdown, .mkd, .mdx'` | Options | FileDetector.setCustomExtensions() |
 | Strict CSP Mode | `cspStrict` | `false` | Options | Sanitizer strict config → re-render |
 | Debug Logging | `debugLog` | `false` | Options | Logger._enabled flag |
+| Render Downloads | `interceptDownloads` | `true` | Popup + Options | service-worker download listener |
 
 ### MessageBus Actions (Settings Relay)
 
@@ -85,6 +94,8 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | `APPLY_EXTENSIONS` | Options | SW relay → FileDetector + broadcast all tabs |
 | `APPLY_CSP_STRICT` | Options | SW relay → _reRender() with new sanitizer config |
 | `APPLY_DEBUG_LOG` | Options | SW relay → Logger.setEnabled() |
+| `APPLY_INTERCEPT_DOWNLOADS` | Popup/Options | SW local (no relay — consumed by download listener) |
+| `GET_LAST_INTERCEPTED` | Popup | SW responds with last intercepted filename (30s window) |
 
 ---
 
@@ -339,6 +350,7 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | Phase 9.3 | `tests/phase9-step93-browser-verify.html` | 54 tests |
 | Phase 9.4 | `tests/phase9-step94-browser-verify.html` | 42 tests |
 | Phase 9.5 | `tests/phase9-step95-browser-verify.html` | 60 tests |
+| Phase 10 | `tests/phase10-browser-verify.html` | ~70 tests |
 
 ---
 
@@ -357,7 +369,49 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | `enableFileUrl` toggle removed entirely | Global `enabled` toggle is sufficient |
 | Extensions UI split into readonly + editable fields | Prevents accidental removal of built-in defaults |
 | `CSPSTRICT` default is `false` (plan said `true`) | Relaxed mode avoids breaking images/links on install |
+| `"downloads"` permission added | Required for `chrome.downloads.onDeterminingFilename` |
+| SW relay also broadcasts via `chrome.runtime.sendMessage()` | Extension pages (viewer.html) can't receive `tabs.sendMessage()` |
+| viewer.js is an IIFE, not a class | Linear pipeline without detection logic — no need for MarkUpApp class |
+| `host_permissions: ["<all_urls>"]` added | Required for viewer.html to `fetch()` cross-origin download URLs (CORS bypass) |
 
 ---
 
 > **For future agents:** Always check this file's "Known Deviations" section, the "Settings Model" table, and the relevant Phase entry before implementing a new PLAN.md step. The manifest, service worker, and content script have evolved significantly from their Phase 1 skeletons.
+
+---
+
+## Phase 10 — Download Interception
+**Steps 10.1–10.6 · All Completed**
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `src/viewer/viewer.html` | Extension page that loads all CSS/JS and runs viewer.js |
+| `src/viewer/viewer.js` | IIFE controller: fetch → parse → render → highlight → TOC → theme → UI |
+| `src/viewer/viewer.css` | Viewer-specific styles: loading, error, save button, edge cases |
+| `tests/phase10-browser-verify.html` | ~70 tests covering constants, detection, settings, viewer, regressions |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `src/utils/constants.js` | Added `DEFAULTS.INTERCEPT_DOWNLOADS: true` |
+| `src/manifest.json` | Added `"downloads"` permission + `"host_permissions": ["<all_urls>"]` |
+| `src/options/options.html` | Added "Render Markdown downloads" toggle in Behavior section |
+| `src/options/options.js` | Wired `interceptDownloads` load/save/reset + `APPLY_INTERCEPT_DOWNLOADS` |
+| `src/popup/popup.html` | Added intercept toggle + notification container |
+| `src/popup/popup.css` | Added `.markup-popup-notice` notification styles |
+| `src/popup/popup.js` | Wired intercept toggle + `GET_LAST_INTERCEPTED` notification widget |
+| `src/background/service-worker.js` | Added download listener, cleanup, viewer redirect, notification state |
+
+### Key Decisions
+- **3-step cleanup order:** `cancel()` → `removeFile()` → `erase()`. Order matters — `removeFile()` must run before `erase()` to delete the partial file from disk.
+- **viewer.js is an IIFE, not a MarkUpApp class.** Content script detection logic (`_isRawMarkdownPage()`) doesn't apply — viewer fetches content directly via URL param.
+- **SW relay also broadcasts via `chrome.runtime.sendMessage()`** so extension pages (viewer.html) receive settings updates. Safe additive change.
+- **`_lastIntercepted` is ephemeral** (module-scoped variable, not persisted) — lives only while SW is alive. 30-second window for popup notification.
+- **`suggest()` called synchronously** as required by `onDeterminingFilename` API. Async setting checks happen after suggesting — if setting is off, download proceeds normally (not cancelled).
+
+### Post-implementation Bugfixes
+- **`settingsStorage` TDZ:** The async IIFE loading custom extensions referenced `settingsStorage` before its `const` declaration (temporal dead zone). Fixed by reordering declarations in `service-worker.js`.
+- **CORS for viewer fetch:** Added `host_permissions: ["<all_urls>"]` to manifest so `viewer.html` and the service worker can `fetch()` cross-origin URLs (Google Chat, Slack, etc.) without CORS blocks.
+- **`_showCORSError()` handler:** Dedicated CORS error card in viewer.js with "Download instead", "Open in browser" (direct navigation with session cookies), and "Try again" buttons. Acts as a safety net if `host_permissions` is ever insufficient.
+

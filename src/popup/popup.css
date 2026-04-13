@@ -59,6 +59,32 @@ body {
   font-weight: 500;
 }
 
+/* --- Intercept Notification --- */
+
+.markup-popup-notice {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0550ae;
+  background: #ddf4ff;
+  border-bottom: 1px solid #54aeff;
+  text-align: center;
+  transition: opacity 0.3s ease;
+}
+
+.markup-popup-notice.hidden {
+  display: none;
+}
+
+.markup-popup-notice.visible {
+  display: block;
+  opacity: 1;
+}
+
+.markup-popup-notice.fade-out {
+  opacity: 0;
+}
+
 /* --- Sections --- */
 
 .markup-popup-section {

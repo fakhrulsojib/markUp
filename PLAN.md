@@ -1,7 +1,7 @@
 # PLAN.md — MarkUp: Chrome Extension Markdown Reader
 
-> **Status:** v0.2.0 — All Phases Complete (1–9)  
-> **Version:** 0.2.0  
+> **Status:** v0.3.0 — All Phases Complete (1–10)  
+> **Version:** 0.3.0  
 > **Last Updated:** 2026-04-13  
 
 ---
@@ -756,7 +756,7 @@ classDiagram
 
 ## 8. Future Roadmap
 
-### Phase 10: Download Interception — Render Instead of Download 🔲
+### Phase 10: Download Interception — Render Instead of Download ✅
 
 > **Context:** When Markdown files are shared in Google Chat, Slack, email, or any web app, clicking them triggers a download (`Content-Disposition: attachment`). The browser never navigates to a renderable page, so MarkUp's content script never runs. This phase intercepts `.md` downloads globally, cancels them, and renders the content in a new tab using the existing pipeline.
 
@@ -868,5 +868,5 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 
 ---
 
-> **End of PLAN.md — v0.2.0 | Phases 1–9 Complete | Phase 10 Planned**
+> **End of PLAN.md — v0.3.0 | Phases 1–10 Complete**
 
