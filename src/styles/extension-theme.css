@@ -1,0 +1,162 @@
+/**
+ * MarkUp — Extension Page Theme Variables
+ *
+ * Shared stylesheet for extension pages (popup, options) that provides
+ * CSS custom properties for all three themes. Scoped to body-level selectors
+ * so popup.css and options.css can reference var(--markup-*) tokens.
+ *
+ * Load order: extension-theme.css → popup.css / options.css
+ *
+ * The default (no-class) body rule uses light theme values — identical to
+ * the existing hardcoded colors — so pages look correct even before JS runs.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   FLASH PREVENTION
+   ═══════════════════════════════════════════════════════════════════ */
+
+body.markup-theme-loading {
+  opacity: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SMOOTH THEME TRANSITIONS
+   ═══════════════════════════════════════════════════════════════════ */
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DEFAULT (NO-CLASS) — LIGHT FALLBACK
+   Matches existing hardcoded values so pages render correctly
+   even if JS hasn't applied a theme class yet.
+   ═══════════════════════════════════════════════════════════════════ */
+
+body {
+  --markup-bg-primary: #ffffff;
+  --markup-bg-secondary: #f6f8fa;
+  --markup-text-primary: #24292f;
+  --markup-text-secondary: #656d76;
+  --markup-text-link: #0969da;
+  --markup-border: #d0d7de;
+  --markup-accent: #0969da;
+
+  /* Extension-page-specific tokens */
+  --markup-ext-input-bg: #f6f8fa;
+  --markup-ext-input-border: #d0d7de;
+  --markup-ext-card-bg: #ffffff;
+  --markup-ext-hover-bg: #eaeef2;
+  --markup-ext-success-bg: #dafbe1;
+  --markup-ext-success-color: #1a7f37;
+  --markup-ext-danger-color: #cf222e;
+  --markup-ext-danger-hover-bg: #ffebe9;
+  --markup-ext-notice-bg: #ddf4ff;
+  --markup-ext-notice-color: #0550ae;
+  --markup-ext-notice-border: #54aeff;
+  --markup-ext-version-bg: #f6f8fa;
+  --markup-ext-version-color: #656d76;
+  --markup-ext-toggle-bg: #afb8c1;
+  --markup-ext-toggle-checked: #0969da;
+  --markup-ext-scrollbar: #d0d7de;
+  --markup-ext-code-bg: #eaeef2;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT THEME (explicit)
+   ═══════════════════════════════════════════════════════════════════ */
+
+body.markup-theme-light {
+  --markup-bg-primary: #ffffff;
+  --markup-bg-secondary: #f6f8fa;
+  --markup-text-primary: #24292f;
+  --markup-text-secondary: #656d76;
+  --markup-text-link: #0969da;
+  --markup-border: #d0d7de;
+  --markup-accent: #0969da;
+
+  --markup-ext-input-bg: #f6f8fa;
+  --markup-ext-input-border: #d0d7de;
+  --markup-ext-card-bg: #ffffff;
+  --markup-ext-hover-bg: #eaeef2;
+  --markup-ext-success-bg: #dafbe1;
+  --markup-ext-success-color: #1a7f37;
+  --markup-ext-danger-color: #cf222e;
+  --markup-ext-danger-hover-bg: #ffebe9;
+  --markup-ext-notice-bg: #ddf4ff;
+  --markup-ext-notice-color: #0550ae;
+  --markup-ext-notice-border: #54aeff;
+  --markup-ext-version-bg: #f6f8fa;
+  --markup-ext-version-color: #656d76;
+  --markup-ext-toggle-bg: #afb8c1;
+  --markup-ext-toggle-checked: #0969da;
+  --markup-ext-scrollbar: #d0d7de;
+  --markup-ext-code-bg: #eaeef2;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DARK THEME
+   ═══════════════════════════════════════════════════════════════════ */
+
+body.markup-theme-dark {
+  --markup-bg-primary: #0d1117;
+  --markup-bg-secondary: #161b22;
+  --markup-text-primary: #e6edf3;
+  --markup-text-secondary: #8b949e;
+  --markup-text-link: #58a6ff;
+  --markup-border: #30363d;
+  --markup-accent: #58a6ff;
+
+  --markup-ext-input-bg: #0d1117;
+  --markup-ext-input-border: #30363d;
+  --markup-ext-card-bg: #161b22;
+  --markup-ext-hover-bg: #1c2128;
+  --markup-ext-success-bg: #0d2818;
+  --markup-ext-success-color: #3fb950;
+  --markup-ext-danger-color: #f85149;
+  --markup-ext-danger-hover-bg: #2d0b0b;
+  --markup-ext-notice-bg: #0c2d6b;
+  --markup-ext-notice-color: #58a6ff;
+  --markup-ext-notice-border: #1f6feb;
+  --markup-ext-version-bg: #161b22;
+  --markup-ext-version-color: #8b949e;
+  --markup-ext-toggle-bg: #484f58;
+  --markup-ext-toggle-checked: #58a6ff;
+  --markup-ext-scrollbar: #30363d;
+  --markup-ext-code-bg: #1c2128;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   SEPIA THEME
+   ═══════════════════════════════════════════════════════════════════ */
+
+body.markup-theme-sepia {
+  --markup-bg-primary: #f4ecd8;
+  --markup-bg-secondary: #eee4cc;
+  --markup-text-primary: #433422;
+  --markup-text-secondary: #6b5a42;
+  --markup-text-link: #8b5e3c;
+  --markup-border: #d4c5a9;
+  --markup-accent: #b07d4f;
+
+  --markup-ext-input-bg: #eee4cc;
+  --markup-ext-input-border: #d4c5a9;
+  --markup-ext-card-bg: #f4ecd8;
+  --markup-ext-hover-bg: #e6dcc4;
+  --markup-ext-success-bg: #e6dfc0;
+  --markup-ext-success-color: #5a7542;
+  --markup-ext-danger-color: #a04030;
+  --markup-ext-danger-hover-bg: #e8d0c0;
+  --markup-ext-notice-bg: #e8dcc0;
+  --markup-ext-notice-color: #8b5e3c;
+  --markup-ext-notice-border: #b07d4f;
+  --markup-ext-version-bg: #eee4cc;
+  --markup-ext-version-color: #6b5a42;
+  --markup-ext-toggle-bg: #b8a88c;
+  --markup-ext-toggle-checked: #b07d4f;
+  --markup-ext-scrollbar: #d4c5a9;
+  --markup-ext-code-bg: #e6dcc4;
+}

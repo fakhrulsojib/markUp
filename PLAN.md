@@ -1,6 +1,6 @@
 # PLAN.md — MarkUp: Chrome Extension Markdown Reader
 
-> **Status:** v0.3.0 — All Phases Complete (1–10)  
+> **Status:** v0.3.0 — All Phases Complete (1–11)  
 > **Version:** 0.3.0  
 > **Last Updated:** 2026-04-13  
 
@@ -895,44 +895,49 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 
 ---
 
-### Phase 11 — Themed Extension Pages
+### Phase 11 — Themed Extension Pages ✅
 
 > **Goal:** The popup and options page should reflect the user's selected theme (light/dark/sepia) instead of always using a hardcoded light design.
 
-#### Step 11.1 — Shared Theme Variables
+#### Step 11.1 — Shared Theme Variables ✅
 
-- Extract the core CSS custom properties (backgrounds, text colors, borders, accents) from the content themes (`light.css`, `dark.css`, `sepia.css`) into a shared theme stylesheet that popup and options pages can import.
-- Ensure the popup and options pages load `variables.css` + the shared theme styles.
+- ✅ Extract the core CSS custom properties (backgrounds, text colors, borders, accents) from the content themes (`light.css`, `dark.css`, `sepia.css`) into a shared theme stylesheet that popup and options pages can import.
+- ✅ Ensure the popup and options pages load `variables.css` + the shared theme styles.
+- ✅ Created `src/styles/extension-theme.css` with body-scoped theme variables for light/dark/sepia, including extension-specific tokens (`--markup-ext-*`), flash prevention, and smooth transitions.
 
-#### Step 11.2 — Popup Theme Support
+#### Step 11.2 — Popup Theme Support ✅
 
-- On popup open, read the current `theme` from `StorageManager`.
-- Apply the theme class (e.g., `markup-theme-dark`) to the popup `<body>`.
-- Update all popup CSS to use CSS custom properties instead of hardcoded colors.
-- Theme quick-switch buttons should update the popup's own theme immediately.
+- ✅ On popup open, read the current `theme` from `StorageManager`.
+- ✅ Apply the theme class (e.g., `markup-theme-dark`) to the popup `<body>`.
+- ✅ Update all popup CSS to use CSS custom properties instead of hardcoded colors.
+- ✅ Theme quick-switch buttons should update the popup's own theme immediately.
 
-#### Step 11.3 — Options Page Theme Support
+#### Step 11.3 — Options Page Theme Support ✅
 
-- On options page load, read the current `theme` from `StorageManager`.
-- Apply the theme class to the options `<body>`.
-- Update all options CSS to use CSS custom properties instead of hardcoded colors.
-- Theme radio buttons / selectors should update the options page's own theme immediately.
+- ✅ On options page load, read the current `theme` from `StorageManager`.
+- ✅ Apply the theme class to the options `<body>`.
+- ✅ Update all options CSS to use CSS custom properties instead of hardcoded colors.
+- ✅ Theme radio buttons / selectors should update the options page's own theme immediately.
+- ✅ Reset button also resets the options page theme to default.
 
-#### Step 11.4 — Live Theme Relay for Extension Pages
+#### Step 11.4 — Live Theme Relay for Extension Pages ✅
 
-- When `APPLY_THEME` is broadcast via `chrome.runtime.sendMessage()`, the popup and options pages should listen and update their theme in real time.
-- Ensure no flash of wrong theme on page load (apply theme before rendering content).
+- ✅ When `APPLY_THEME` is broadcast via `chrome.runtime.sendMessage()`, the popup and options pages listen and update their theme in real time.
+- ✅ No flash of wrong theme on page load — `body.markup-theme-loading { opacity: 0 }` removed after theme class is applied.
+- ✅ No service worker changes needed — existing relay already broadcasts to extension pages.
 
-#### Step 11.5 — Testing & Verification
+#### Step 11.5 — Testing & Verification ✅
 
-- Create `tests/phase11-browser-verify.html` with tests for:
+- ✅ Create `tests/phase11-browser-verify.html` with tests for:
   - Theme class application on popup/options body
   - CSS custom property usage (no hardcoded colors)
   - Live theme switching via MessageBus
-- Manual QA: switch between light/dark/sepia and verify popup + options match.
-- Update `AGENTS.md`, `README.md`.
+  - Regression checks for all prior phases
+- ✅ 74 tests passed, 0 failed.
+- ✅ Phase 10.5 regression suite: 41 passed, 0 failed.
+- ✅ Updated `AGENTS.md`, `README.md`, `PLAN.md`.
 
-> ✅ **Verify:** Popup and options pages visually match the selected theme. All prior test suites pass.
+> ✅ **Verified:** Popup and options pages visually match the selected theme. All prior test suites pass.
 
 ---
 
@@ -946,5 +951,5 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 
 ---
 
-> **End of PLAN.md — v0.3.0 | Phases 1–10.5 Complete, Phase 11 Planned**
+> **End of PLAN.md — v0.3.0 | Phases 1–11 Complete, Phase 12+ Planned**
 

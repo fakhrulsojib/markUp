@@ -61,6 +61,9 @@
       await LoggerClass.init();
     }
 
+    // Apply theme to popup body FIRST (before any other rendering)
+    await _applyThemeOnLoad();
+
     // Load and display current state
     await _loadThemeState();
     await _loadToggleStates();
@@ -72,6 +75,7 @@
     _wireToggleSwitches();
     _wireOptionsLink();
     _wireClearRecentButton();
+    _wireThemeRelay();
   }
 
   // --- Theme Quick Switch ---
@@ -133,6 +137,7 @@
     if (!themeName) return;
 
     _setActiveThemeButton(themeName);
+    _applyThemeToBody(themeName);
 
     // Persist to storage
     if (storage) {
@@ -420,6 +425,63 @@
   }
 
   // --- Utility Functions ---
+
+  // --- Theme Application ---
+
+  /**
+   * Apply the persisted theme to the popup body on load.
+   * Reads the theme from storage and applies the CSS class.
+   * Also removes the flash-prevention loading class.
+   * @private
+   */
+  async function _applyThemeOnLoad() {
+    let themeName = 'light';
+
+    if (storage) {
+      try {
+        const savedTheme = await storage.get('theme');
+        if (savedTheme && typeof savedTheme === 'string') {
+          themeName = savedTheme;
+        }
+      } catch (err) {
+        // Default to light on error
+      }
+    }
+
+    _applyThemeToBody(themeName);
+
+    // Remove flash-prevention class
+    document.body.classList.remove('markup-theme-loading');
+  }
+
+  /**
+   * Apply a theme class to the popup body.
+   * Removes all existing theme classes and adds the new one.
+   * @param {string} themeName - The theme to apply.
+   * @private
+   */
+  function _applyThemeToBody(themeName) {
+    document.body.classList.remove('markup-theme-light', 'markup-theme-dark', 'markup-theme-sepia');
+    document.body.classList.add('markup-theme-' + themeName);
+  }
+
+  /**
+   * Wire MessageBus listener for live APPLY_THEME relay.
+   * When the options page or content script changes the theme,
+   * the popup (if open) updates to match.
+   * @private
+   */
+  function _wireThemeRelay() {
+    if (!messageBus) return;
+
+    messageBus.listen('APPLY_THEME', (payload) => {
+      if (payload && payload.theme) {
+        _applyThemeToBody(payload.theme);
+        _setActiveThemeButton(payload.theme);
+      }
+      return { success: true };
+    });
+  }
 
   /**
    * Extract filename from a URL.
