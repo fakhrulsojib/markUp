@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 9 Step 9.1 — Browser Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; padding: 24px; }
+    h1 { font-size: 1.5em; margin-bottom: 8px; }
+    h2 { font-size: 1.1em; margin: 16px 0 8px; color: #8b949e; }
+    .summary { margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #161b22; }
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .warn { color: #d29922; }
+    .test-group { margin-bottom: 12px; }
+    .test-result { padding: 4px 8px; font-size: 0.85em; font-family: monospace; }
+    #sandbox { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Phase 9 Step 9.1 — Browser Tests</h1>
+  <div class="summary" id="summary"></div>
+  <div id="results"></div>
+  <div id="sandbox"></div>
+
+  <!-- Load dependencies -->
+  <script src="../src/utils/constants.js"></script>
+  <script src="../src/utils/dom-helpers.js"></script>
+  <script src="../src/utils/sanitizer.js"></script>
+  <script src="../src/core/EventEmitter.js"></script>
+
+  <!-- Mock chrome.storage for testing outside extension context -->
+  <script>
+    if (typeof chrome === 'undefined' || !chrome.storage) {
+      const _store = {};
+      window.chrome = window.chrome || {};
+      chrome.storage = {
+        sync: {
+          get: function(keys, callback) {
+            const result = {};
+            if (keys === null) {
+              Object.assign(result, _store);
+            } else if (typeof keys === 'string') {
+              if (_store[keys] !== undefined) result[keys] = _store[keys];
+            } else if (Array.isArray(keys)) {
+              keys.forEach(k => { if (_store[k] !== undefined) result[k] = _store[k]; });
+            } else if (typeof keys === 'object') {
+              for (const [k, v] of Object.entries(keys)) {
+                result[k] = _store[k] !== undefined ? _store[k] : v;
+              }
+            }
+            if (callback) callback(result);
+          },
+          set: function(items, callback) {
+            Object.assign(_store, items);
+            if (callback) callback();
+          },
+          remove: function(keys, callback) {
+            if (typeof keys === 'string') keys = [keys];
+            keys.forEach(k => delete _store[k]);
+            if (callback) callback();
+          }
+        },
+        local: {
+          get: function(keys, callback) { chrome.storage.sync.get(keys, callback); },
+          set: function(items, callback) { chrome.storage.sync.set(items, callback); },
+          remove: function(keys, callback) { chrome.storage.sync.remove(keys, callback); }
+        }
+      };
+      chrome.runtime = chrome.runtime || {};
+      chrome.runtime.lastError = null;
+      chrome.runtime.onMessage = chrome.runtime.onMessage || {
+        addListener: function() {},
+        removeListener: function() {}
+      };
+      chrome.runtime.sendMessage = chrome.runtime.sendMessage || function(msg, callback) {
+        if (callback) callback({});
+      };
+    }
+
+    // Expose _store for test manipulation
+    window._testStore = chrome.storage.sync._store || {};
+    // Helper to reset storage between tests
+    function resetStorage() {
+      const store = window._testStore;
+      for (const key in store) {
+        delete store[key];
+      }
+    }
+  </script>
+
+  <!-- Load core modules -->
+  <script src="../src/core/StorageManager.js"></script>
+  <script src="../src/core/MessageBus.js"></script>
+  <script src="../src/core/FileDetector.js"></script>
+  <script src="../src/core/ThemeManager.js"></script>
+  <script src="../src/core/SearchController.js"></script>
+  <script src="../src/core/PrintManager.js"></script>
+  <script src="../src/core/KeyboardManager.js"></script>
+
+  <!-- Load UI components -->
+  <script src="../src/ui/BaseComponent.js"></script>
+  <script src="../src/ui/ToolbarComponent.js"></script>
+  <script src="../src/ui/TocPanelComponent.js"></script>
+  <script src="../src/ui/SearchBarComponent.js"></script>
+  <script src="../src/ui/SettingsPanelComponent.js"></script>
+
+  <!-- Load CSS files -->
+  <link rel="stylesheet" href="../src/styles/variables.css">
+  <link rel="stylesheet" href="../src/styles/themes/light.css">
+  <link rel="stylesheet" href="../src/styles/themes/dark.css">
+  <link rel="stylesheet" href="../src/styles/themes/sepia.css">
+  <link rel="stylesheet" href="../src/styles/typography.css">
+  <link rel="stylesheet" href="../src/content/content.css">
+  <link rel="stylesheet" href="../src/styles/ui-components.css">
+  <link rel="stylesheet" href="../src/styles/print.css">
+
+  <script>
+    (function() {
+      'use strict';
+
+      let passed = 0;
+      let failed = 0;
+      let warned = 0;
+      const results = document.getElementById('results');
+      const sandbox = document.getElementById('sandbox');
+
+      function log(type, message) {
+        const div = document.createElement('div');
+        div.className = `test-result ${type}`;
+        div.textContent = `  ${type.toUpperCase()}: ${message}`;
+        results.appendChild(div);
+        if (type === 'pass') passed++;
+        else if (type === 'fail') failed++;
+        else warned++;
+      }
+
+      function assert(condition, message) {
+        if (condition) {
+          log('pass', message);
+        } else {
+          log('fail', message);
+          console.error('FAIL:', message);
+        }
+      }
+
+      function groupHeader(name) {
+        const h2 = document.createElement('h2');
+        h2.textContent = name;
+        results.appendChild(h2);
+      }
+
+      function cleanupSandbox() {
+        sandbox.innerHTML = '';
+        sandbox.style.display = 'none';
+      }
+
+      function showSandbox() {
+        sandbox.style.display = 'block';
+      }
+
+      // ===== Test Group 1: DEFAULTS updated with new keys =====
+      groupHeader('1. Constants — New DEFAULTS Keys');
+
+      (function() {
+        const DEFAULTS = MARKUP_CONSTANTS.DEFAULTS;
+        assert(DEFAULTS.AUTORENDER === true, 'DEFAULTS.AUTORENDER is true');
+        assert(DEFAULTS.AUTODETECT === true, 'DEFAULTS.AUTODETECT is true');
+        assert(DEFAULTS.ENABLEFILEURL === true, 'DEFAULTS.ENABLEFILEURL is true');
+
+        // Verify existing defaults are preserved
+        assert(DEFAULTS.THEME === 'light', 'DEFAULTS.THEME is still "light"');
+        assert(DEFAULTS.FONT_SIZE === 16, 'DEFAULTS.FONT_SIZE is still 16');
+        assert(DEFAULTS.LINE_HEIGHT === 1.6, 'DEFAULTS.LINE_HEIGHT is still 1.6');
+        assert(DEFAULTS.FONT_FAMILY === 'system-ui', 'DEFAULTS.FONT_FAMILY is still "system-ui"');
+        assert(DEFAULTS.TOC_VISIBLE === false, 'DEFAULTS.TOC_VISIBLE is still false');
+        assert(DEFAULTS.TOOLBAR_POSITION === 'top-right', 'DEFAULTS.TOOLBAR_POSITION is still "top-right"');
+      })();
+
+      // ===== Test Group 2: StorageManager — autoRender default =====
+      groupHeader('2. StorageManager — autoRender Default');
+
+      (async function() {
+        resetStorage();
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        // When not set, autoRender should return undefined (no DEFAULTS match for 'autoRender')
+        // because DEFAULTS uses AUTORENDER (uppercase). The content script uses !== false check.
+        const val = await storage.get('autoRender');
+        assert(val === undefined || val === true,
+          `autoRender returns ${val} when not set (undefined or true — both allow pipeline to run)`);
+
+        // When explicitly set to false
+        await storage.set('autoRender', false);
+        const valFalse = await storage.get('autoRender');
+        assert(valFalse === false, `autoRender returns false when set to false (got: ${valFalse})`);
+
+        // When explicitly set to true
+        await storage.set('autoRender', true);
+        const valTrue = await storage.get('autoRender');
+        assert(valTrue === true, `autoRender returns true when set to true (got: ${valTrue})`);
+
+        resetStorage();
+      })();
+
+      // ===== Test Group 3: StorageManager — enableFileUrl default =====
+      groupHeader('3. StorageManager — enableFileUrl Default');
+
+      (async function() {
+        resetStorage();
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        const val = await storage.get('enableFileUrl');
+        assert(val === undefined || val === true,
+          `enableFileUrl returns ${val} when not set (undefined or true — both allow pipeline)`);
+
+        await storage.set('enableFileUrl', false);
+        const valFalse = await storage.get('enableFileUrl');
+        assert(valFalse === false, `enableFileUrl returns false when set to false (got: ${valFalse})`);
+
+        resetStorage();
+      })();
+
+      // ===== Test Group 4: StorageManager — autoDetect default =====
+      groupHeader('4. StorageManager — autoDetect Default');
+
+      (async function() {
+        resetStorage();
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        const val = await storage.get('autoDetect');
+        assert(val === undefined || val === true,
+          `autoDetect returns ${val} when not set (undefined or true — both allow injection)`);
+
+        await storage.set('autoDetect', false);
+        const valFalse = await storage.get('autoDetect');
+        assert(valFalse === false, `autoDetect returns false when set to false (got: ${valFalse})`);
+
+        resetStorage();
+      })();
+
+      // ===== Test Group 5: Content Script Static Analysis — autoRender gate =====
+      groupHeader('5. Content Script — autoRender Gate (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes("storage.get('autoRender')") || content.includes("earlyStorage.get('autoRender')"),
+            'content-script.js reads autoRender from storage');
+          assert(content.includes('autoRender === false'),
+            'content-script.js checks autoRender === false');
+          assert(content.includes('_showDisabledBanner'),
+            'content-script.js has _showDisabledBanner method');
+          assert(content.includes('auto-rendering is disabled'),
+            'Banner text includes "auto-rendering is disabled"');
+
+          // Verify gate is after detection/extraction but before parsing
+          const gateIndex = content.indexOf('autoRender === false');
+          const parseIndex = content.indexOf('_parseAndRender');
+          const detectIndex = content.indexOf('_isRawMarkdownPage');
+          assert(gateIndex > detectIndex,
+            'autoRender gate is after detection');
+          assert(gateIndex < parseIndex,
+            'autoRender gate is before parsing');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 6: Content Script Static Analysis — enableFileUrl gate =====
+      groupHeader('6. Content Script — enableFileUrl Gate (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes("earlyStorage.get('enableFileUrl')"),
+            'content-script.js reads enableFileUrl from storage');
+          assert(content.includes('enableFileUrl === false'),
+            'content-script.js checks enableFileUrl === false');
+          assert(content.includes("window.location.protocol === 'file:'"),
+            'enableFileUrl gate checks for file:// protocol');
+          assert(content.includes('_showFileUrlDisabledBanner'),
+            'content-script.js has _showFileUrlDisabledBanner method');
+          assert(content.includes('disabled for local files'),
+            'Banner text includes "disabled for local files"');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 7: Content Script — APPLY_AUTO_RENDER listener =====
+      groupHeader('7. Content Script — APPLY_AUTO_RENDER Listener (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes("listen('APPLY_AUTO_RENDER'"),
+            'content-script.js has APPLY_AUTO_RENDER MessageBus listener');
+          assert(content.includes("listen('APPLY_ENABLE_FILE_URL'"),
+            'content-script.js has APPLY_ENABLE_FILE_URL MessageBus listener');
+
+          // Both handlers should trigger reload
+          const autoRenderListenerIdx = content.indexOf("listen('APPLY_AUTO_RENDER'");
+          const enableFileUrlListenerIdx = content.indexOf("listen('APPLY_ENABLE_FILE_URL'");
+          const afterAutoRender = content.substring(autoRenderListenerIdx, autoRenderListenerIdx + 400);
+          const afterEnableFileUrl = content.substring(enableFileUrlListenerIdx, enableFileUrlListenerIdx + 300);
+
+          assert(afterAutoRender.includes('window.location.reload()'),
+            'APPLY_AUTO_RENDER handler calls window.location.reload()');
+          assert(afterEnableFileUrl.includes('window.location.reload()'),
+            'APPLY_ENABLE_FILE_URL handler calls window.location.reload()');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 8: Service Worker Static Analysis — autoDetect gate =====
+      groupHeader('8. Service Worker — autoDetect Gate (Static Analysis)');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/background/service-worker.js');
+          const content = await response.text();
+
+          assert(content.includes("settingsStorage.get('autoDetect')") || content.includes("get('autoDetect')"),
+            'service-worker.js reads autoDetect from storage');
+          assert(content.includes('autoDetect === false'),
+            'service-worker.js checks autoDetect === false');
+          assert(content.includes('Auto-detect disabled'),
+            'service-worker.js logs when auto-detect is disabled');
+
+          // Verify settingsStorage is created
+          assert(content.includes('settingsStorage'),
+            'service-worker.js has settingsStorage instance');
+
+        } catch (err) {
+          log('warn', `Could not fetch service-worker.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 9: Service Worker — New Relay Handlers =====
+      groupHeader('9. Service Worker — APPLY_AUTO_RENDER & APPLY_ENABLE_FILE_URL Relays');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/background/service-worker.js');
+          const content = await response.text();
+
+          assert(content.includes("listen('APPLY_AUTO_RENDER'"),
+            'service-worker.js has APPLY_AUTO_RENDER listener');
+          assert(content.includes("listen('APPLY_ENABLE_FILE_URL'"),
+            'service-worker.js has APPLY_ENABLE_FILE_URL listener');
+
+          // Verify relay pattern (tabs.sendMessage)
+          const autoRenderIdx = content.indexOf("listen('APPLY_AUTO_RENDER'");
+          const afterAutoRender = content.substring(autoRenderIdx, autoRenderIdx + 500);
+          assert(afterAutoRender.includes('chrome.tabs.sendMessage'),
+            'APPLY_AUTO_RENDER relays via chrome.tabs.sendMessage');
+
+          const enableFileUrlIdx = content.indexOf("listen('APPLY_ENABLE_FILE_URL'");
+          const afterEnableFileUrl = content.substring(enableFileUrlIdx, enableFileUrlIdx + 500);
+          assert(afterEnableFileUrl.includes('chrome.tabs.sendMessage'),
+            'APPLY_ENABLE_FILE_URL relays via chrome.tabs.sendMessage');
+
+          // APPLY_ENABLE_FILE_URL should only relay to file:// tabs
+          assert(afterEnableFileUrl.includes("startsWith('file://')"),
+            'APPLY_ENABLE_FILE_URL relay only targets file:// tabs');
+
+          // Existing relays are still present
+          assert(content.includes("listen('APPLY_THEME'"),
+            'service-worker.js still has APPLY_THEME listener');
+          assert(content.includes("listen('APPLY_FONT_SIZE'"),
+            'service-worker.js still has APPLY_FONT_SIZE listener');
+          assert(content.includes("listen('APPLY_LINE_HEIGHT'"),
+            'service-worker.js still has APPLY_LINE_HEIGHT listener');
+          assert(content.includes("listen('APPLY_FONT_FAMILY'"),
+            'service-worker.js still has APPLY_FONT_FAMILY listener');
+
+        } catch (err) {
+          log('warn', `Could not fetch service-worker.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 10: Options.js — APPLY_AUTO_RENDER notification =====
+      groupHeader('10. Options.js — APPLY_AUTO_RENDER Notification');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/options/options.js');
+          const content = await response.text();
+
+          assert(content.includes("APPLY_AUTO_RENDER"),
+            'options.js sends APPLY_AUTO_RENDER notification');
+          assert(content.includes("_notifyContentScript('APPLY_AUTO_RENDER'"),
+            'options.js calls _notifyContentScript with APPLY_AUTO_RENDER');
+          assert(content.includes("autoRender: checked"),
+            'options.js includes autoRender value in notification payload');
+
+          // Still saves to storage
+          assert(content.includes("_saveSetting('autoRender', checked)"),
+            'options.js still saves autoRender to storage');
+
+        } catch (err) {
+          log('warn', `Could not fetch options.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 11: Popup.js — APPLY_ENABLE_FILE_URL & APPLY_AUTO_DETECT notifications =====
+      groupHeader('11. Popup.js — Toggle Notifications');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/popup/popup.js');
+          const content = await response.text();
+
+          // enableFileUrl notification
+          assert(content.includes("APPLY_ENABLE_FILE_URL"),
+            'popup.js sends APPLY_ENABLE_FILE_URL notification');
+          assert(content.includes("enableFileUrl: enabled"),
+            'popup.js includes enableFileUrl value in payload');
+
+          // autoDetect notification
+          assert(content.includes("APPLY_AUTO_DETECT"),
+            'popup.js sends APPLY_AUTO_DETECT notification');
+          assert(content.includes("autoDetect: enabled"),
+            'popup.js includes autoDetect value in payload');
+
+          // Still saves to storage
+          assert(content.includes("storage.set('enableFileUrl', enabled)"),
+            'popup.js still saves enableFileUrl to storage');
+          assert(content.includes("storage.set('autoDetect', enabled)"),
+            'popup.js still saves autoDetect to storage');
+
+        } catch (err) {
+          log('warn', `Could not fetch popup.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 12: Banner UI — Disabled Banner Rendering =====
+      groupHeader('12. Banner UI — _showDisabledBanner');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          // Verify banner has Enable button
+          assert(content.includes("enableBtn.textContent = 'Enable'"),
+            '_showDisabledBanner has Enable button');
+          assert(content.includes("Enable MarkUp auto-rendering"),
+            '_showDisabledBanner Enable button has aria-label');
+          assert(content.includes("sm.set('autoRender', true)"),
+            'Enable button sets autoRender to true in storage');
+
+          // Verify file URL banner
+          assert(content.includes("enableBtn.textContent = 'Enable'"),
+            '_showFileUrlDisabledBanner has Enable button');
+          assert(content.includes("Enable MarkUp for local files"),
+            '_showFileUrlDisabledBanner Enable button has aria-label');
+          assert(content.includes("sm.set('enableFileUrl', true)"),
+            'Enable button sets enableFileUrl to true in storage');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 13: Banner CSS Classes =====
+      groupHeader('13. Banner CSS — Styles Exist');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes('disabled-bar'),
+            'CSS class markup-disabled-bar is defined');
+          assert(content.includes('enable-btn'),
+            'CSS class markup-enable-btn is defined');
+          assert(content.includes('background: #ddf4ff'),
+            'Disabled banner has blue info background');
+          assert(content.includes('color: #0550ae'),
+            'Disabled banner has blue text color');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 14: Content Script — Existing Listeners Preserved =====
+      groupHeader('14. Regression — Existing MessageBus Listeners');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes("listen('APPLY_THEME'"),
+            'content-script.js still has APPLY_THEME listener');
+          assert(content.includes("listen('APPLY_FONT_SIZE'"),
+            'content-script.js still has APPLY_FONT_SIZE listener');
+          assert(content.includes("listen('APPLY_LINE_HEIGHT'"),
+            'content-script.js still has APPLY_LINE_HEIGHT listener');
+          assert(content.includes("listen('APPLY_FONT_FAMILY'"),
+            'content-script.js still has APPLY_FONT_FAMILY listener');
+          assert(content.includes('--markup-font-size-base'),
+            'APPLY_FONT_SIZE handler still sets --markup-font-size-base');
+          assert(content.includes('--markup-line-height'),
+            'APPLY_LINE_HEIGHT handler still sets --markup-line-height');
+          assert(content.includes('--markup-font-body'),
+            'APPLY_FONT_FAMILY handler still sets --markup-font-body');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 15: Regression — Edge Case Handlers =====
+      groupHeader('15. Regression — Edge Case Handlers');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/content/content-script.js');
+          const content = await response.text();
+
+          assert(content.includes('_showEmptyFileMessage'),
+            'content-script.js still has _showEmptyFileMessage');
+          assert(content.includes('_showBinaryFileMessage'),
+            'content-script.js still has _showBinaryFileMessage');
+          assert(content.includes('_showLargeFileWarning'),
+            'content-script.js still has _showLargeFileWarning');
+          assert(content.includes('_addRawToggle'),
+            'content-script.js still has _addRawToggle');
+          assert(content.includes('_showLoadingSpinner'),
+            'content-script.js still has _showLoadingSpinner');
+          assert(content.includes('_isBinaryContent'),
+            'content-script.js still has _isBinaryContent helper');
+
+        } catch (err) {
+          log('warn', `Could not fetch content-script.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 16: Regression — Existing Constants =====
+      groupHeader('16. Regression — Existing Constants');
+
+      (function() {
+        const C = MARKUP_CONSTANTS;
+        assert(C.THEMES.LIGHT === 'light', 'THEMES.LIGHT preserved');
+        assert(C.THEMES.DARK === 'dark', 'THEMES.DARK preserved');
+        assert(C.THEMES.SEPIA === 'sepia', 'THEMES.SEPIA preserved');
+        assert(C.STORAGE_KEYS.THEME === 'markup_theme', 'STORAGE_KEYS.THEME preserved');
+        assert(C.EVENTS.THEME_CHANGED === 'themeChanged', 'EVENTS.THEME_CHANGED preserved');
+        assert(C.EVENTS.TOC_TOGGLED === 'tocToggled', 'EVENTS.TOC_TOGGLED preserved');
+        assert(C.CSS_PREFIX === 'markup', 'CSS_PREFIX preserved');
+        assert(C.MAX_DOCUMENT_SIZE === 500000, 'MAX_DOCUMENT_SIZE preserved');
+        assert(Array.isArray(C.MD_URL_PATTERNS), 'MD_URL_PATTERNS is array');
+        assert(C.MD_URL_PATTERNS.length === 5, 'MD_URL_PATTERNS has 5 patterns');
+      })();
+
+      // ===== Test Group 17: Regression — Core Classes Available =====
+      groupHeader('17. Regression — Global Exports');
+
+      (function() {
+        assert(typeof MARKUP_STORAGE_MANAGER === 'function', 'MARKUP_STORAGE_MANAGER exported');
+        assert(typeof MARKUP_EVENT_EMITTER === 'function', 'MARKUP_EVENT_EMITTER exported');
+        assert(typeof MARKUP_MESSAGE_BUS === 'function', 'MARKUP_MESSAGE_BUS exported');
+        assert(typeof MARKUP_FILE_DETECTOR === 'function', 'MARKUP_FILE_DETECTOR exported');
+        assert(typeof MARKUP_THEME_MANAGER === 'function', 'MARKUP_THEME_MANAGER exported');
+        assert(typeof MARKUP_TOOLBAR_COMPONENT === 'function', 'MARKUP_TOOLBAR_COMPONENT exported');
+        assert(typeof MARKUP_SEARCH_CONTROLLER === 'function', 'MARKUP_SEARCH_CONTROLLER exported');
+        assert(typeof MARKUP_PRINT_MANAGER === 'function', 'MARKUP_PRINT_MANAGER exported');
+        assert(typeof MARKUP_KEYBOARD_MANAGER === 'function', 'MARKUP_KEYBOARD_MANAGER exported');
+      })();
+
+      // ===== Test Group 18: Regression — StorageManager CRUD =====
+      groupHeader('18. Regression — StorageManager CRUD');
+
+      (async function() {
+        resetStorage();
+        const storage = new MARKUP_STORAGE_MANAGER();
+
+        // set & get
+        await storage.set('theme', 'dark');
+        const theme = await storage.get('theme');
+        assert(theme === 'dark', `set/get theme: ${theme}`);
+
+        // Default fallback
+        const fontSize = await storage.get('fontSize');
+        assert(fontSize === 16 || fontSize === undefined,
+          `Default fontSize fallback: ${fontSize}`);
+
+        // remove
+        await storage.set('testKey', 'testValue');
+        await storage.remove('testKey');
+        const removed = await storage.get('testKey');
+        assert(removed === undefined, `Removed key returns undefined: ${removed}`);
+
+        resetStorage();
+      })();
+
+      // ===== Test Group 19: Regression — EventEmitter =====
+      groupHeader('19. Regression — EventEmitter');
+
+      (function() {
+        const emitter = new MARKUP_EVENT_EMITTER();
+        let fired = false;
+        emitter.on('test', () => { fired = true; });
+        emitter.emit('test');
+        assert(fired, 'EventEmitter on/emit works');
+
+        // once
+        let onceCount = 0;
+        emitter.once('onceTest', () => { onceCount++; });
+        emitter.emit('onceTest');
+        emitter.emit('onceTest');
+        assert(onceCount === 1, `once fires exactly once: ${onceCount}`);
+
+        // off
+        let offCount = 0;
+        function handler() { offCount++; }
+        emitter.on('offTest', handler);
+        emitter.emit('offTest');
+        emitter.off('offTest', handler);
+        emitter.emit('offTest');
+        assert(offCount === 1, `off removes listener: ${offCount}`);
+      })();
+
+      // ===== Test Group 20: Regression — FileDetector =====
+      groupHeader('20. Regression — FileDetector');
+
+      (function() {
+        const fd = new MARKUP_FILE_DETECTOR();
+        assert(fd.isMarkdownUrl('file:///docs/README.md') === true, 'Detects .md');
+        assert(fd.isMarkdownUrl('file:///docs/README.markdown') === true, 'Detects .markdown');
+        assert(fd.isMarkdownUrl('file:///docs/README.mdown') === true, 'Detects .mdown');
+        assert(fd.isMarkdownUrl('file:///docs/README.mkd') === true, 'Detects .mkd');
+        assert(fd.isMarkdownUrl('file:///docs/README.mdx') === true, 'Detects .mdx');
+        assert(fd.isMarkdownUrl('https://example.com/page.html') === false, 'Rejects .html');
+        assert(fd.isMarkdownUrl('https://example.com/doc.md?v=2') === true, 'Handles query string');
+      })();
+
+      // ===== Test Group 21: Regression — Toolbar =====
+      groupHeader('21. Regression — Toolbar Component');
+
+      (function() {
+        showSandbox();
+        const emitter = new MARKUP_EVENT_EMITTER();
+        const toolbar = new MARKUP_TOOLBAR_COMPONENT(emitter);
+        toolbar.mount(sandbox);
+
+        const el = toolbar.getElement();
+        assert(el !== null, 'Toolbar renders');
+        assert(el.classList.contains('markup-toolbar'), 'Has markup-toolbar class');
+        assert(el.getAttribute('role') === 'toolbar', 'Has role=toolbar');
+
+        // Buttons
+        const buttons = el.querySelectorAll('.markup-toolbar-btn');
+        assert(buttons.length === 6, `Has 6 buttons (5 + drag): ${buttons.length}`);
+
+        toolbar.unmount();
+        cleanupSandbox();
+      })();
+
+      // ===== Test Group 22: Service Worker — Existing Handlers Preserved =====
+      groupHeader('22. Regression — Service Worker Existing Handlers');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/background/service-worker.js');
+          const content = await response.text();
+
+          assert(content.includes("listen('ping'"),
+            'service-worker.js still has ping handler');
+          assert(content.includes("listen('GET_RECENT_FILES'"),
+            'service-worker.js still has GET_RECENT_FILES handler');
+          assert(content.includes("listen('ADD_RECENT_FILE'"),
+            'service-worker.js still has ADD_RECENT_FILE handler');
+          assert(content.includes('_isCoveredByStaticMatches'),
+            'service-worker.js still has _isCoveredByStaticMatches');
+          assert(content.includes('injectedTabs'),
+            'service-worker.js still has injectedTabs Set');
+          assert(content.includes("chrome.runtime.onInstalled"),
+            'service-worker.js still has onInstalled handler');
+
+        } catch (err) {
+          log('warn', `Could not fetch service-worker.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 23: Options.js — Existing Controls Preserved =====
+      groupHeader('23. Regression — Options.js Existing Controls');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/options/options.js');
+          const content = await response.text();
+
+          assert(content.includes("APPLY_THEME"),
+            'options.js still sends APPLY_THEME');
+          assert(content.includes("APPLY_FONT_SIZE"),
+            'options.js still sends APPLY_FONT_SIZE');
+          assert(content.includes("APPLY_LINE_HEIGHT"),
+            'options.js still sends APPLY_LINE_HEIGHT');
+          assert(content.includes("APPLY_FONT_FAMILY"),
+            'options.js still sends APPLY_FONT_FAMILY');
+          assert(content.includes("_wireAppearanceControls"),
+            'options.js still has _wireAppearanceControls');
+          assert(content.includes("_wireAdvancedControls"),
+            'options.js still has _wireAdvancedControls');
+          assert(content.includes("_wireResetButton"),
+            'options.js still has _wireResetButton');
+
+        } catch (err) {
+          log('warn', `Could not fetch options.js: ${err.message}`);
+        }
+      })();
+
+      // ===== Test Group 24: Popup.js — Existing Features Preserved =====
+      groupHeader('24. Regression — Popup.js Existing Features');
+
+      (async function() {
+        try {
+          const response = await fetch('../src/popup/popup.js');
+          const content = await response.text();
+
+          assert(content.includes("_loadThemeState"),
+            'popup.js still has _loadThemeState');
+          assert(content.includes("_loadToggleStates"),
+            'popup.js still has _loadToggleStates');
+          assert(content.includes("_loadRecentFiles"),
+            'popup.js still has _loadRecentFiles');
+          assert(content.includes("_wireThemeButtons"),
+            'popup.js still has _wireThemeButtons');
+          assert(content.includes("_wireOptionsLink"),
+            'popup.js still has _wireOptionsLink');
+          assert(content.includes("APPLY_THEME"),
+            'popup.js still sends APPLY_THEME');
+
+        } catch (err) {
+          log('warn', `Could not fetch popup.js: ${err.message}`);
+        }
+      })();
+
+      // Wait for async tests to complete, then show summary
+      setTimeout(function() {
+        const summary = document.getElementById('summary');
+        const total = passed + failed;
+        const cls = failed === 0 ? 'pass' : 'fail';
+        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
+        if (warned > 0) {
+          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
+        }
+        document.title = `Phase 9.1 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
+      }, 1500);
+    })();
+  </script>
+</body>
+</html>

@@ -12,7 +12,7 @@
 - Created the full directory structure: `src/` (with `background/`, `content/`, `popup/`, `options/`, `core/`, `ui/`, `styles/themes/`, `utils/`), `assets/` (with `icons/`, `fonts/`), `vendor/`, `tests/test-files/`, `scripts/`.
 - Created `README.md` with project name, one-line description, and "Under Construction" badge.
 - Created `AGENTS.md` (this file) with header and first entry.
-- `PLAN.md` exists as `ProjectPlan.md` at the project root.
+- `PLAN.md` at the project root.
 
 **Technical decisions:**
 - Directory structure follows the plan exactly as specified in Section 2 of PLAN.md.
@@ -22,7 +22,7 @@
 - Directory tree is fully scaffolded. Root documentation files exist. Ready for Step 1.2 (manifest.json).
 
 **Issues / Deviations:**
-- None. The project plan file is named `ProjectPlan.md` rather than `PLAN.md` — keeping as-is since the user created it with that name.
+- None.
 ---
 
 ### [Step 1.2] — Create `manifest.json` (Manifest V3)
@@ -884,7 +884,7 @@
 - Updated `README.md`:
   - Moved "Light / Dark / Sepia theme toggle with persistence" from 🔜 Coming Soon to ✅ Implemented.
   - Added Themes subsection under Features.
-- Updated `ProjectPlan.md`: Marked Steps 5.1–5.7 as Done.
+- Updated `PLAN.md`: Marked Steps 5.1–5.7 as Done.
 - Ran regression tests — all existing test suites pass with zero regressions.
 - Created `tests/phase5-browser-verify.html` with comprehensive Phase 5 test suite.
 
@@ -905,7 +905,7 @@
   - `src/background/service-worker.js` — Dynamic injection updated for Phase 5 files.
   - `src/content/content-script.js` — ThemeManager wired into pipeline.
   - All Phase 1–4 tests pass with zero regressions.
-  - AGENTS.md, README.md, and ProjectPlan.md are current.
+  - AGENTS.md, README.md, and PLAN.md are current.
 - Ready for Phase 6: UI Component Layer.
 
 **Issues / Deviations:**
@@ -1046,7 +1046,7 @@
 - Updated README.md with interactive features and shortcuts.
 - Created `tests/phase6-browser-verify.html` — 143 tests, all passing.
 - Regression tests: Phase 2 ✅, Phase 3 ✅, Phase 4 (67/67) ✅, Phase 5 (89/89) ✅.
-- Marked Phase 6 as Done in ProjectPlan.md.
+- Marked Phase 6 as Done in PLAN.md.
 
 **Current state:**
 - Phase 6 is fully complete. All UI components and interactive features are in place.
@@ -1248,7 +1248,7 @@
   - Added `options/` to project structure.
   - Updated version badge from "Under Construction" to "v0.1.0".
 - Appended Steps 7.1–7.9 to `AGENTS.md` (this file).
-- Updated `ProjectPlan.md` — all Phase 7 steps marked Done, status set to "v0.1.0 — Released".
+- Updated `PLAN.md` — all Phase 7 steps marked Done, status set to "v0.1.0 — Released".
 
 **Current state:**
 - All documentation is current and reflects the final state of the project.
@@ -1292,7 +1292,7 @@
   - `scripts/package.sh`, `scripts/build.sh` — Build and packaging
   - `README.md` — Final documentation
   - `AGENTS.md` — Development log updated
-  - `ProjectPlan.md` — Status: Done
+  - `PLAN.md` — Status: Done
 
 **Issues / Deviations:** None.
 ---
@@ -1427,6 +1427,50 @@
   - `tests/phase6-browser-verify.html` — regression fix (button count)
   - `PLAN.md` — Phase 8 marked as Done
   - `AGENTS.md` — Development log updated
+
+**Issues / Deviations:**
+- None.
+---
+
+### [Step 9.1] — Wire `autoRender`, `autoDetect`, & `enableFileUrl` Settings
+**Date:** 2026-04-13
+**Status:** Completed
+
+**What was implemented:**
+- **`constants.js`**: Added 3 new entries to `DEFAULTS` — `AUTORENDER: true`, `AUTODETECT: true`, `ENABLEFILEURL: true`. All existing defaults preserved.
+- **`content-script.js`** — 4 changes:
+  1. **`autoRender` gate** in `run()`: After detection/extraction, before parsing — reads `autoRender` from `StorageManager`. If `=== false`, skips pipeline and shows styled info banner: "⏸️ MarkUp auto-rendering is disabled. [Enable]".
+  2. **`enableFileUrl` gate** in `run()`: For `file://` URLs only — reads `enableFileUrl` from `StorageManager`. If `=== false`, shows "🔒 MarkUp is disabled for local files. [Enable]".
+  3. **`APPLY_AUTO_RENDER` listener**: Triggers `window.location.reload()` on receipt — re-evaluates the gate on reload.
+  4. **`APPLY_ENABLE_FILE_URL` listener**: Same reload pattern, only for `file://` tabs.
+  5. **Banner CSS**: `.markup-disabled-bar` (blue info background) and `.markup-enable-btn` (branded button) added to `_injectEdgeCaseStyles()`.
+- **`service-worker.js`** — 3 changes:
+  1. **`autoDetect` gate**: Wraps dynamic injection in async IIFE that reads `autoDetect` from `settingsStorage`. If `=== false`, skips injection entirely. Fail-open on error (defaults to injecting).
+  2. **`APPLY_AUTO_RENDER` relay**: Queries all tabs, relays to Markdown tabs via `chrome.tabs.sendMessage()`.
+  3. **`APPLY_ENABLE_FILE_URL` relay**: Same pattern but only targets `file://` Markdown tabs.
+  4. Created `settingsStorage` instance (`chrome.storage.sync`) for reading user settings.
+- **`options.js`**: Added `_notifyContentScript('APPLY_AUTO_RENDER', { autoRender: checked })` after saving `autoRender` toggle — enables live update to open tabs.
+- **`popup.js`**: Added `messageBus.send('APPLY_ENABLE_FILE_URL', { enableFileUrl: enabled })` and `messageBus.send('APPLY_AUTO_DETECT', { autoDetect: enabled })` after their respective toggle saves.
+- **Test suite**: Created `tests/phase9-step91-browser-verify.html` — 132 tests across 24 groups: new feature verification + comprehensive regression (constants, StorageManager, EventEmitter, FileDetector, Toolbar, all static analysis for content script/service worker/options/popup).
+
+**Technical decisions:**
+- Gates use strict `=== false` comparison — `undefined` (no value stored) is treated as "enabled" for backward compatibility.
+- `earlyStorage` (StorageManager instance) is created at the top of `run()` specifically for settings checks — separate from `this._storage` initialized later in the pipeline. This avoids coupling the settings gate to the full initialization flow.
+- Both banners insert at `document.body.firstChild` (prepend) rather than clearing the body — preserves the raw Markdown text below the banner.
+- Both Enable buttons write `true` to storage and reload — page reload re-evaluates the gate cleanly.
+- `autoDetect` gate wraps dynamic injection code in an async IIFE because `chrome.tabs.onUpdated` doesn't support async callbacks. The IIFE allows `await` for the StorageManager read.
+- `APPLY_ENABLE_FILE_URL` relay in the service worker only targets `file://` tabs (not all Markdown tabs) — `http://` tabs don't need to respond to this setting change.
+
+**Current state:**
+- All 3 behavioral settings from Step 9.1 are fully wired:
+  - `autoRender` (Options → Behavior) → content-script gate + banner + live toggle
+  - `autoDetect` (Popup) → service-worker dynamic injection gate
+  - `enableFileUrl` (Popup) → content-script gate + banner + live toggle
+- Test results:
+  - Phase 9.1: 132/132 passed ✅
+  - Phase 8: 78/78 passed ✅ (regression)
+  - Phase 2–7: all passing ✅ (regression)
+- Ready for Step 9.2: `debugLog` wiring.
 
 **Issues / Deviations:**
 - None.

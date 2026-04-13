@@ -151,6 +151,7 @@
   function _wireBehaviorControls() {
     _wireToggle('markup-opt-autorender', async (checked) => {
       await _saveSetting('autoRender', checked);
+      await _notifyContentScript('APPLY_AUTO_RENDER', { autoRender: checked });
     });
 
     const extensionsEl = document.getElementById('markup-opt-extensions');

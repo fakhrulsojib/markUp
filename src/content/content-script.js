@@ -306,6 +306,62 @@
         return;
       }
 
+      // --- Settings Gates (Step 9.1) ---
+
+      // Initialize StorageManager early for settings checks
+      const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+      const earlyStorage = StorageManagerClass ? new StorageManagerClass() : null;
+
+      // Wire early MessageBus listeners for settings that can short-circuit the pipeline.
+      // These must be registered BEFORE the gates, otherwise re-enabling from popup
+      // won't reach tabs that were disabled (since _wireMessageBusListeners runs later).
+      const MessageBusClass = (typeof MARKUP_MESSAGE_BUS !== 'undefined') ? MARKUP_MESSAGE_BUS : null;
+      if (MessageBusClass) {
+        try {
+          const earlyBus = new MessageBusClass();
+          earlyBus.listen('APPLY_AUTO_RENDER', () => {
+            window.location.reload();
+            return { success: true };
+          });
+          earlyBus.listen('APPLY_ENABLE_FILE_URL', () => {
+            if (window.location.protocol === 'file:') {
+              window.location.reload();
+            }
+            return { success: true };
+          });
+        } catch (err) {
+          console.warn('MarkUp: Failed to wire early MessageBus listeners:', err);
+        }
+      }
+
+      // Gate: enableFileUrl — skip rendering for file:// URLs if disabled
+      if (earlyStorage && window.location.protocol === 'file:') {
+        try {
+          const enableFileUrl = await earlyStorage.get('enableFileUrl');
+          if (enableFileUrl === false) {
+            console.log('MarkUp: Rendering disabled for file:// URLs.');
+            this._showFileUrlDisabledBanner(rawMarkdown);
+            return;
+          }
+        } catch (err) {
+          console.warn('MarkUp: Failed to check enableFileUrl setting:', err);
+        }
+      }
+
+      // Gate: autoRender — skip rendering if disabled
+      if (earlyStorage) {
+        try {
+          const autoRender = await earlyStorage.get('autoRender');
+          if (autoRender === false) {
+            console.log('MarkUp: Auto-rendering is disabled.');
+            this._showDisabledBanner(rawMarkdown);
+            return;
+          }
+        } catch (err) {
+          console.warn('MarkUp: Failed to check autoRender setting:', err);
+        }
+      }
+
       // Store raw markdown for toggle feature
       this._rawMarkdown = rawMarkdown;
 
@@ -772,6 +828,10 @@
         }
         return { success: true };
       });
+
+      // Note: APPLY_AUTO_RENDER and APPLY_ENABLE_FILE_URL listeners are wired
+      // early in run() (before the settings gates) so they're active even when
+      // the pipeline short-circuits. They are NOT duplicated here.
     }
 
     /**
@@ -968,6 +1028,100 @@
 
       _injectEdgeCaseStyles();
       document.body.appendChild(container);
+    }
+
+    /**
+     * Show a banner when auto-rendering is disabled.
+     * User can click [Enable] to re-enable and re-run the pipeline.
+     *
+     * @param {string} rawMarkdown - The raw content (preserved as-is).
+     * @private
+     */
+    _showDisabledBanner(rawMarkdown) {
+      _injectEdgeCaseStyles();
+
+      const banner = document.createElement('div');
+      banner.id = `${PREFIX}-disabled-banner`;
+      banner.className = `${PREFIX}-disabled-bar`;
+
+      const text = document.createElement('span');
+      text.textContent = '⏸️ MarkUp auto-rendering is disabled.';
+
+      const enableBtn = document.createElement('button');
+      enableBtn.className = `${PREFIX}-enable-btn`;
+      enableBtn.textContent = 'Enable';
+      enableBtn.setAttribute('aria-label', 'Enable MarkUp auto-rendering');
+
+      enableBtn.addEventListener('click', function _onEnableAutoRender() {
+        const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+        if (StorageManagerClass) {
+          const sm = new StorageManagerClass();
+          sm.set('autoRender', true).then(() => {
+            window.location.reload();
+          }).catch(() => {
+            window.location.reload();
+          });
+        } else {
+          window.location.reload();
+        }
+      });
+
+      banner.appendChild(text);
+      banner.appendChild(enableBtn);
+
+      // Insert at the top of body without clearing existing content
+      if (document.body.firstChild) {
+        document.body.insertBefore(banner, document.body.firstChild);
+      } else {
+        document.body.appendChild(banner);
+      }
+    }
+
+    /**
+     * Show a banner when rendering is disabled for file:// URLs.
+     * User can click [Enable] to re-enable and re-run the pipeline.
+     *
+     * @param {string} rawMarkdown - The raw content (preserved as-is).
+     * @private
+     */
+    _showFileUrlDisabledBanner(rawMarkdown) {
+      _injectEdgeCaseStyles();
+
+      const banner = document.createElement('div');
+      banner.id = `${PREFIX}-fileurl-disabled-banner`;
+      banner.className = `${PREFIX}-disabled-bar`;
+
+      const text = document.createElement('span');
+      text.textContent = '🔒 MarkUp is disabled for local files.';
+
+      const enableBtn = document.createElement('button');
+      enableBtn.className = `${PREFIX}-enable-btn`;
+      enableBtn.textContent = 'Enable';
+      enableBtn.setAttribute('aria-label', 'Enable MarkUp for local files');
+
+      enableBtn.addEventListener('click', function _onEnableFileUrl() {
+        const StorageManagerClass = (typeof MARKUP_STORAGE_MANAGER !== 'undefined') ? MARKUP_STORAGE_MANAGER : null;
+        if (StorageManagerClass) {
+          const sm = new StorageManagerClass();
+          sm.set('enableFileUrl', true).then(() => {
+            window.location.reload();
+          }).catch(() => {
+            window.location.reload();
+          });
+        } else {
+          window.location.reload();
+        }
+      });
+
+      banner.appendChild(text);
+      banner.appendChild(enableBtn);
+
+      // Insert at the top of body without clearing existing content
+      if (document.body.firstChild) {
+        document.body.insertBefore(banner, document.body.firstChild);
+      } else {
+        document.body.appendChild(banner);
+      }
     }
 
     /**
@@ -1184,6 +1338,36 @@
         transition: background 0.15s ease;
       }
       .${PREFIX}-load-more-btn:hover {
+        background: #0860ca;
+      }
+      .${PREFIX}-disabled-bar {
+        position: sticky;
+        top: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 10px 16px;
+        background: #ddf4ff;
+        border-bottom: 1px solid #54aeff;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 13px;
+        color: #0550ae;
+      }
+      .${PREFIX}-enable-btn {
+        padding: 4px 12px;
+        font-size: 12px;
+        font-family: inherit;
+        font-weight: 500;
+        color: #ffffff;
+        background: #0969da;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      .${PREFIX}-enable-btn:hover {
         background: #0860ca;
       }
     `;

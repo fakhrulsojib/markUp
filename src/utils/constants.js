@@ -64,6 +64,9 @@ const DEFAULTS = Object.freeze({
   FONT_FAMILY: 'system-ui',
   TOC_VISIBLE: false,
   TOOLBAR_POSITION: 'top-right',
+  AUTORENDER: true,
+  AUTODETECT: true,
+  ENABLEFILEURL: true,
 });
 
 /**
