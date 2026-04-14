@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#install"><img src="https://img.shields.io/badge/chrome-extension-4285F4?logo=googlechrome&logoColor=white" alt="Chrome Extension"></a>
+  <a href="#-getting-started"><img src="https://img.shields.io/badge/chrome-extension-4285F4?logo=googlechrome&logoColor=white" alt="Chrome Extension"></a>
   <img src="https://img.shields.io/badge/version-0.3.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/manifest-V3-orange" alt="Manifest V3">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
@@ -48,23 +48,30 @@ No apps to install, no copying into an online viewer. Just open your file.
 
 ## 📸 Screenshots
 
-*(Replace these with actual screenshots/GIFs of your extension in action!)*
-
 | Light Theme | Dark Theme |
 |-------------|------------|
-| <img src="https://via.placeholder.com/400x250?text=Light+Theme+Screenshot" alt="Light Theme" width="400"> | <img src="https://via.placeholder.com/400x250?text=Dark+Theme+Screenshot" alt="Dark Theme" width="400"> |
+| <img src="assets/screenshots/light-theme.png" alt="Light Theme — task lists, code blocks with syntax highlighting" width="480"> | <img src="assets/screenshots/dark-theme.png" alt="Dark Theme — deep charcoal for low-light reading" width="480"> |
 
-| Table of Contents | popup/options UI |
-|-------------------|------------------|
-| <img src="https://via.placeholder.com/400x250?text=TOC+Sidebar" alt="TOC Sidebar" width="400"> | <img src="https://via.placeholder.com/400x250?text=Popup+UI" alt="Popup UI" width="400"> |
+| Sepia Theme | Table of Contents |
+|-------------|-------------------|
+| <img src="assets/screenshots/sepia-theme.png" alt="Sepia Theme — warm paper tones for long reads" width="480"> | <img src="assets/screenshots/toc-sidebar.png" alt="Table of Contents sidebar with scroll-spy" width="480"> |
 
 ---
 
 ## 🚀 Getting Started
 
-### Install
+### Option 1 — Download (easiest)
 
-1. Clone or download this repo:
+1. Download the latest `.zip` from [**Releases**](https://github.com/fakhrulsojib/markUp/releases/latest)
+2. Extract the zip
+3. Open `chrome://extensions` in Chrome
+4. Enable **Developer mode** (top-right toggle)
+5. Click **Load unpacked** → select the extracted folder
+6. *(For local files)* Click extension **Details** → enable **Allow access to file URLs**
+
+### Option 2 — Clone (for contributors)
+
+1. Clone the repo:
    ```bash
    git clone https://github.com/fakhrulsojib/markUp.git
    ```
