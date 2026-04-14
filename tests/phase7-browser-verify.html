@@ -292,8 +292,8 @@
         test(g7, 'Has popup reference', () => {
           assertContains(manifest.action.default_popup, 'popup.html');
         });
-        test(g7, 'Version is 0.1.0', () => {
-          assertEqual(manifest.version, '0.1.0');
+        test(g7, 'Version is 0.3.0', () => {
+          assertEqual(manifest.version, '0.3.0');
         });
         test(g7, 'Has storage permission', () => {
           assert(manifest.permissions.includes('storage'));
@@ -431,7 +431,7 @@
         const buildSh = await (await fetch('../scripts/build.sh')).text();
 
         test(g13, 'package.sh exists', () => { assert(packageSh.length > 0); });
-        test(g13, 'package.sh has version', () => { assertContains(packageSh, '0.1.0'); });
+        test(g13, 'package.sh has version', () => { assertContains(packageSh, '0.3.0'); });
         test(g13, 'package.sh creates dist/', () => { assertContains(packageSh, 'dist'); });
         test(g13, 'package.sh creates zip', () => { assertContains(packageSh, 'zip'); });
         test(g13, 'build.sh exists', () => { assert(buildSh.length > 0); });

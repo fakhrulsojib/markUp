@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MarkUp — Full Test Runner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 28px;
+      color: #58a6ff;
+      margin-bottom: 6px;
+    }
+    header p {
+      color: #8b949e;
+      font-size: 14px;
+    }
+
+    /* -- Global summary bar -- */
+    #global-summary {
+      text-align: center;
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 28px;
+      transition: all .3s;
+    }
+    #global-summary.running {
+      background: #1c2333;
+      border: 1px solid #30363d;
+      color: #8b949e;
+    }
+    #global-summary.all-pass {
+      background: #0d2818;
+      border: 2px solid #3fb950;
+      color: #3fb950;
+    }
+    #global-summary.has-fail {
+      background: #2d0b0b;
+      border: 2px solid #f85149;
+      color: #f85149;
+    }
+
+    /* -- Progress bar -- */
+    #progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #21262d;
+      border-radius: 3px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    #progress-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, #58a6ff, #3fb950);
+      border-radius: 3px;
+      transition: width .3s ease;
+    }
+    #progress-fill.has-fail { background: linear-gradient(90deg, #f85149, #da3633); }
+
+    /* -- Suite cards -- */
+    .suite-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: border-color .3s;
+    }
+    .suite-card.pass { border-color: #238636; }
+    .suite-card.fail { border-color: #f85149; }
+
+    .suite-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .suite-header:hover { background: #1c2333; }
+
+    .suite-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #c9d1d9;
+    }
+    .suite-card.pass .suite-name { color: #3fb950; }
+    .suite-card.fail .suite-name { color: #f85149; }
+
+    .suite-status {
+      font-size: 13px;
+      font-family: monospace;
+      color: #8b949e;
+    }
+    .suite-status .pass-count { color: #3fb950; }
+    .suite-status .fail-count { color: #f85149; }
+
+    .suite-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .badge-running { background: #1f2937; color: #8b949e; }
+    .badge-pass { background: #0d2818; color: #3fb950; }
+    .badge-fail { background: #2d0b0b; color: #f85149; }
+
+    .suite-detail {
+      display: none;
+      padding: 0 20px 16px;
+      border-top: 1px solid #21262d;
+    }
+    .suite-detail.open { display: block; }
+
+    .suite-detail iframe {
+      width: 100%;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #0d1117;
+    }
+
+    /* -- Controls -- */
+    .controls {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .controls button {
+      background: #238636;
+      color: #fff;
+      border: none;
+      padding: 10px 28px;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .controls button:hover { background: #2ea043; }
+    .controls button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+    .timer { color: #8b949e; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🧪 MarkUp — Full Test Runner</h1>
+    <p>Runs all phase test suites sequentially and aggregates results.</p>
+    <p style="font-size:12px; color:#6e7681;">Serve via: <code>cd markUp && python3 -m http.server 8765</code> then open <code>http://localhost:8765/tests/run-all.html</code></p>
+  </header>
+
+  <div class="controls">
+    <button id="run-btn" onclick="runAllSuites()">▶ Run All Tests</button>
+    <div class="timer" id="timer"></div>
+  </div>
+
+  <div id="global-summary" class="running">Press "Run All Tests" to start</div>
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+  <div id="suites-container"></div>
+
+  <script>
+    // All test suites in execution order
+    const SUITES = [
+      { file: 'phase2-browser-verify.html',       name: 'Phase 2 — Core Utilities' },
+      { file: 'phase3-browser-verify.html',       name: 'Phase 3 — Storage, Messaging & Detection' },
+      { file: 'phase4-browser-verify.html',       name: 'Phase 4 — Parsing & Rendering' },
+      { file: 'phase5-browser-verify.html',       name: 'Phase 5 — Theming & Styling' },
+      { file: 'phase6-browser-verify.html',       name: 'Phase 6 — UI Components' },
+      { file: 'phase7-browser-verify.html',       name: 'Phase 7 — Popup, Options & Polish' },
+      { file: 'phase8-browser-verify.html',       name: 'Phase 8 — UI Refinements & Live Settings' },
+      { file: 'phase9-step91-browser-verify.html', name: 'Phase 9.1 — enabled Master Toggle' },
+      { file: 'phase9-step92-browser-verify.html', name: 'Phase 9.2 — debugLog & Logger' },
+      { file: 'phase9-step93-browser-verify.html', name: 'Phase 9.3 — Unified Settings' },
+      { file: 'phase9-step94-browser-verify.html', name: 'Phase 9.4 — Custom Extensions' },
+      { file: 'phase9-step95-browser-verify.html', name: 'Phase 9.5 — CSP Strict Mode' },
+      { file: 'phase10-browser-verify.html',      name: 'Phase 10 — Download Interception' },
+      { file: 'phase10.5-browser-verify.html',    name: 'Phase 10.5 — Post-Release Polish' },
+      { file: 'phase11-browser-verify.html',      name: 'Phase 11 — Themed Extension Pages' },
+      { file: 'phase12-browser-verify.html',      name: 'Phase 12 — Optional Host Permissions' },
+    ];
+
+    let isRunning = false;
+
+    function createSuiteCards() {
+      const container = document.getElementById('suites-container');
+      container.innerHTML = '';
+
+      SUITES.forEach((s, i) => {
+        const card = document.createElement('div');
+        card.className = 'suite-card';
+        card.id = 'card-' + i;
+
+        const header = document.createElement('div');
+        header.className = 'suite-header';
+        header.onclick = () => {
+          const detail = card.querySelector('.suite-detail');
+          detail.classList.toggle('open');
+        };
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'suite-name';
+        nameEl.textContent = s.name;
+
+        const statusEl = document.createElement('span');
+        statusEl.className = 'suite-status';
+        statusEl.id = 'status-' + i;
+        statusEl.innerHTML = '<span class="badge-running suite-badge">Pending</span>';
+
+        header.appendChild(nameEl);
+        header.appendChild(statusEl);
+
+        const detail = document.createElement('div');
+        detail.className = 'suite-detail';
+        detail.id = 'detail-' + i;
+
+        card.appendChild(header);
+        card.appendChild(detail);
+        container.appendChild(card);
+      });
+    }
+
+    function runSuiteInIframe(index) {
+      return new Promise((resolve) => {
+        const s = SUITES[index];
+        const card = document.getElementById('card-' + index);
+        const status = document.getElementById('status-' + index);
+        const detail = document.getElementById('detail-' + index);
+
+        status.innerHTML = '<span class="badge-running suite-badge">Running…</span>';
+
+        const iframe = document.createElement('iframe');
+        iframe.style.height = '300px';
+        detail.innerHTML = '';
+        detail.appendChild(iframe);
+
+        function extractResults(iframeDoc) {
+          // New format: <div id="summary"> containing "X passed, Y failed" (case-insensitive)
+          const summaryEl = iframeDoc.getElementById('summary');
+          if (summaryEl && summaryEl.textContent.toLowerCase().includes('passed')) {
+            return summaryEl.textContent;
+          }
+          // Old format: <pre id="output"> containing "Results: X passed, Y failed"
+          const outputEl = iframeDoc.getElementById('output');
+          if (outputEl) {
+            const match = outputEl.textContent.match(/Results:\s*(\d+)\s*passed,\s*(\d+)\s*failed/i);
+            if (match) return match[1] + ' passed, ' + match[2] + ' failed';
+          }
+          // Fallback: scan entire body text for the pattern (case-insensitive)
+          const bodyText = iframeDoc.body ? iframeDoc.body.textContent : '';
+          const fallback = bodyText.match(/(\d+)\s*passed,\s*(\d+)\s*failed/i);
+          if (fallback) return fallback[1] + ' passed, ' + fallback[2] + ' failed';
+          return null;
+        }
+
+        function finalize(resultText) {
+          const passMatch = resultText.match(/(\d+)\s*passed/i);
+          const failMatch = resultText.match(/(\d+)\s*failed/i);
+          const passed = passMatch ? parseInt(passMatch[1]) : 0;
+          const failed = failMatch ? parseInt(failMatch[1]) : 0;
+
+          try {
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            const bodyHeight = iframeDoc.body.scrollHeight;
+            iframe.style.height = Math.min(bodyHeight + 20, 600) + 'px';
+          } catch (_) {}
+
+          if (failed === 0) {
+            card.classList.add('pass');
+            status.innerHTML =
+              '<span class="pass-count">' + passed + ' passed</span>' +
+              '<span class="badge-pass suite-badge">✅ PASS</span>';
+          } else {
+            card.classList.add('fail');
+            detail.classList.add('open');
+            status.innerHTML =
+              '<span class="pass-count">' + passed + ' passed</span>, ' +
+              '<span class="fail-count">' + failed + ' failed</span>' +
+              '<span class="badge-fail suite-badge">❌ FAIL</span>';
+          }
+          resolve({ name: s.name, passed, failed });
+        }
+
+        iframe.onload = () => {
+          let elapsed = 0;
+          const pollInterval = 500;
+          const maxWait = 45000;
+
+          // Check immediately on load — sync tests will already have results
+          try {
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            const immediate = extractResults(iframeDoc);
+            if (immediate) { finalize(immediate); return; }
+          } catch (_) {}
+
+          // Poll for async test suites
+          const poll = setInterval(() => {
+            elapsed += pollInterval;
+            try {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+              const resultText = extractResults(iframeDoc);
+
+              if (resultText) {
+                clearInterval(poll);
+                finalize(resultText);
+              } else if (elapsed >= maxWait) {
+                clearInterval(poll);
+                card.classList.add('fail');
+                detail.classList.add('open');
+                status.innerHTML = '<span class="badge-fail suite-badge">⏱ TIMEOUT</span>';
+                resolve({ name: s.name, passed: 0, failed: 1 });
+              }
+            } catch (e) {
+              if (elapsed >= maxWait) {
+                clearInterval(poll);
+                card.classList.add('fail');
+                status.innerHTML = '<span class="badge-fail suite-badge">⚠ ERROR</span>';
+                resolve({ name: s.name, passed: 0, failed: 1 });
+              }
+            }
+          }, pollInterval);
+        };
+
+        iframe.src = s.file;
+      });
+    }
+
+    async function runAllSuites() {
+      if (isRunning) return;
+      isRunning = true;
+
+      const btn = document.getElementById('run-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Running…';
+
+      const globalSummary = document.getElementById('global-summary');
+      const progressFill = document.getElementById('progress-fill');
+      const timerEl = document.getElementById('timer');
+
+      globalSummary.className = 'running';
+      globalSummary.textContent = 'Running ' + SUITES.length + ' test suites…';
+      progressFill.style.width = '0%';
+      progressFill.className = '';
+
+      createSuiteCards();
+
+      const startTime = performance.now();
+      let totalPassed = 0;
+      let totalFailed = 0;
+      const results = [];
+
+      for (let i = 0; i < SUITES.length; i++) {
+        const result = await runSuiteInIframe(i);
+        results.push(result);
+        totalPassed += result.passed;
+        totalFailed += result.failed;
+
+        // Update progress
+        const pct = ((i + 1) / SUITES.length * 100).toFixed(1);
+        progressFill.style.width = pct + '%';
+        if (totalFailed > 0) progressFill.className = 'has-fail';
+
+        // Update global summary live
+        globalSummary.textContent =
+          '(' + (i + 1) + '/' + SUITES.length + ')  ' +
+          totalPassed + ' passed, ' + totalFailed + ' failed';
+      }
+
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      timerEl.textContent = 'Completed in ' + elapsed + 's';
+
+      if (totalFailed === 0) {
+        globalSummary.className = 'all-pass';
+        globalSummary.textContent =
+          '✅ ALL TESTS PASSED — ' + totalPassed + ' tests across ' + SUITES.length + ' suites';
+      } else {
+        globalSummary.className = 'has-fail';
+        globalSummary.textContent =
+          '❌ ' + totalFailed + ' FAILED — ' + totalPassed + ' passed across ' + SUITES.length + ' suites';
+      }
+
+      btn.disabled = false;
+      btn.textContent = '🔄 Re-run All Tests';
+      isRunning = false;
+    }
+
+    // Pre-create cards on load
+    createSuiteCards();
+  </script>
+</body>
+</html>

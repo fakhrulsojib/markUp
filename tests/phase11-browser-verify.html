@@ -73,7 +73,7 @@
 
     // ===== Mock Chrome APIs =====
     const mockStorage = {};
-    const chrome = {
+    window.chrome = {
       runtime: {
         id: 'test-extension-id',
         getURL: (path) => 'chrome-extension://test-extension-id/' + path,
@@ -93,7 +93,6 @@
       },
       tabs: { create: () => {} },
     };
-    window.chrome = chrome;
 
     // ===== Tests =====
 
