@@ -981,7 +981,7 @@ User clicks .md attachment in Google Chat / Slack / Drive / Email
 - **Phase 14:** Math/LaTeX rendering (KaTeX)
 - **Phase 15:** Custom CSS injection (user-provided stylesheets)
 - **Phase 16:** Multi-file wiki navigation (relative link following)
-- **Phase 17:** Chrome Web Store publication & auto-update
+- **Phase 17:** Community-requested features & contributor onboarding improvements
 
 ---
 

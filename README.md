@@ -46,6 +46,20 @@ No apps to install, no copying into an online viewer. Just open your file.
 
 ---
 
+## 📸 Screenshots
+
+*(Replace these with actual screenshots/GIFs of your extension in action!)*
+
+| Light Theme | Dark Theme |
+|-------------|------------|
+| <img src="https://via.placeholder.com/400x250?text=Light+Theme+Screenshot" alt="Light Theme" width="400"> | <img src="https://via.placeholder.com/400x250?text=Dark+Theme+Screenshot" alt="Dark Theme" width="400"> |
+
+| Table of Contents | popup/options UI |
+|-------------------|------------------|
+| <img src="https://via.placeholder.com/400x250?text=TOC+Sidebar" alt="TOC Sidebar" width="400"> | <img src="https://via.placeholder.com/400x250?text=Popup+UI" alt="Popup UI" width="400"> |
+
+---
+
 ## 🚀 Getting Started
 
 ### Install
@@ -220,7 +234,7 @@ User clicks .md download (Slack, Chat, email)
 bash scripts/package.sh
 ```
 
-Creates `markup-extension-v0.3.0.zip` ready for Chrome Web Store or sideloading.
+Creates `markup-extension-v0.3.0.zip` ready for sideloading.
 
 ---
 
@@ -255,13 +269,11 @@ Manual QA checklist: `tests/test-checklist.md`
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Make your changes following the patterns in [`AGENTS.md`](AGENTS.md)
-4. Run relevant test suites to verify no regressions
-5. Submit a pull request
+We welcome contributions of all kinds — bug fixes, new features, and documentation improvements!
 
-> **Note:** Read `AGENTS.md` before making changes — it documents architecture decisions, conventions, and known deviations from the plan.
+Read our full **[Contributing Guide](CONTRIBUTING.md)** to get started.
+
+> **Note:** Read [`AGENTS.md`](AGENTS.md) before making changes — it acts as a developer log documenting architecture decisions, conventions, and known deviations from the original plan.
 
 ---
 
