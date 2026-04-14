@@ -1,8 +1,8 @@
 # PLAN.md — MarkUp: Chrome Extension Markdown Reader
 
-> **Status:** v0.3.0 — All Phases Complete (1–11)  
+> **Status:** v0.3.0 — All Phases Complete (1–12)  
 > **Version:** 0.3.0  
-> **Last Updated:** 2026-04-13  
+> **Last Updated:** 2026-04-14  
 
 ---
 
