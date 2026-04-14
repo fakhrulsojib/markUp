@@ -6,6 +6,7 @@
 </head>
 <body>
   <h1>Phase 3 Browser Tests</h1>
+  <div id="summary"></div>
   <pre id="output"></pre>
 
   <!-- Load Phase 2 dependencies (required by Phase 3) -->
@@ -41,6 +42,7 @@
   <script>
     const out = document.getElementById('output');
     let passed = 0, failed = 0;
+    const _promises = [];
 
     function assert(cond, name) {
       if (cond) { out.textContent += `  ✅ ${name}\n`; passed++; }
@@ -97,9 +99,9 @@
     // async get — returns default when storage is empty
     {
       const sm = new MARKUP_STORAGE_MANAGER();
-      sm.get('THEME').then((val) => {
+      _promises.push(sm.get('THEME').then((val) => {
         assert(val === 'light', 'async get("THEME") returns default "light" when storage empty');
-      });
+      }));
     }
 
     // async set → get roundtrip with mock
@@ -118,13 +120,13 @@
       };
 
       const sm = new MARKUP_STORAGE_MANAGER();
-      sm.set('theme', 'dark').then(() => {
+      _promises.push(sm.set('theme', 'dark').then(() => {
         assert(mockStore['markup_theme'] === 'dark', 'async set("theme", "dark") persists to mock storage');
         chrome.storage.sync.get = function(key, cb) { cb(mockStore); };
         return sm.get('theme');
       }).then((val) => {
         assert(val === 'dark', 'async get("theme") returns "dark" after set');
-      });
+      }));
     }
 
     // async remove
@@ -143,9 +145,9 @@
       };
 
       const sm = new MARKUP_STORAGE_MANAGER();
-      sm.remove('test').then(() => {
+      _promises.push(sm.remove('test').then(() => {
         assert(!('markup_test' in mockStore), 'async remove("test") deletes from mock storage');
-      });
+      }));
     }
 
     // async getAll
@@ -164,11 +166,11 @@
       };
 
       const sm = new MARKUP_STORAGE_MANAGER();
-      sm.getAll().then((all) => {
+      _promises.push(sm.getAll().then((all) => {
         assert(all.theme === 'dark', 'async getAll() includes "theme" → "dark"');
         assert(all.fontSize === 18, 'async getAll() includes "fontSize" → 18');
         assert(!('other_key' in all), 'async getAll() excludes non-namespaced keys');
-      });
+      }));
     }
 
     // Error handling with lastError
@@ -190,9 +192,9 @@
       };
 
       const sm = new MARKUP_STORAGE_MANAGER();
-      sm.get('THEME').then((val) => {
+      _promises.push(sm.get('THEME').then((val) => {
         assert(val === 'light', 'async get() returns default on chrome.runtime.lastError');
-      });
+      }));
     }
 
     // ═══════════════════════════════════════════
@@ -393,8 +395,8 @@
     }
 
     // ─── Summary ───
-    // Wait for all async tests to flush
-    setTimeout(() => {
+    // Wait for all async tests, then write summary
+    Promise.all(_promises).then(() => {
       out.textContent += `\n${'─'.repeat(40)}\n`;
       out.textContent += `Results: ${passed} passed, ${failed} failed\n`;
       if (failed === 0) {
@@ -402,7 +404,10 @@
       } else {
         out.textContent += `${failed} test(s) failed — review above. ❌\n`;
       }
-    }, 500);
+      const summaryEl = document.getElementById('summary');
+      summaryEl.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+      summaryEl.textContent = passed + ' passed, ' + failed + ' failed';
+    });
   </script>
 </body>
 </html>

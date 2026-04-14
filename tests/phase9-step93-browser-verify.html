@@ -159,15 +159,9 @@ function assertNotIncludes(str, substr, msg) {
 }
 
 function updateSummary() {
-  if (_failedTests === 0) {
-    _summaryEl.className = 'summary pass';
-    _summaryEl.textContent = `✅ ALL PASSED (${_passedTests} tests)`;
-    document.title = `Phase 9.3 — ALL PASSED (${_passedTests} tests)`;
-  } else {
-    _summaryEl.className = 'summary fail';
-    _summaryEl.textContent = `❌ ${_failedTests} FAILED / ${_totalTests} total`;
-    document.title = `Phase 9.3 — ${_failedTests} FAILED`;
-  }
+  _summaryEl.className = 'summary ' + (_failedTests === 0 ? 'all-pass' : 'has-fail');
+  _summaryEl.textContent = _passedTests + ' passed, ' + _failedTests + ' failed';
+  document.title = `Phase 9.3 — ${_failedTests === 0 ? 'ALL PASSED' : _failedTests + ' FAILED'} (${_totalTests} tests)`;
 }
 
 // ==================== LOAD SCRIPTS ====================

@@ -250,21 +250,12 @@
         detail.appendChild(iframe);
 
         function extractResults(iframeDoc) {
-          // New format: <div id="summary"> containing "X passed, Y failed" (case-insensitive)
+          // Standard format: <div id="summary"> with textContent "X passed, Y failed"
           const summaryEl = iframeDoc.getElementById('summary');
-          if (summaryEl && summaryEl.textContent.toLowerCase().includes('passed')) {
-            return summaryEl.textContent;
-          }
-          // Old format: <pre id="output"> containing "Results: X passed, Y failed"
-          const outputEl = iframeDoc.getElementById('output');
-          if (outputEl) {
-            const match = outputEl.textContent.match(/Results:\s*(\d+)\s*passed,\s*(\d+)\s*failed/i);
+          if (summaryEl) {
+            const match = summaryEl.textContent.match(/(\d+)\s*passed,\s*(\d+)\s*failed/i);
             if (match) return match[1] + ' passed, ' + match[2] + ' failed';
           }
-          // Fallback: scan entire body text for the pattern (case-insensitive)
-          const bodyText = iframeDoc.body ? iframeDoc.body.textContent : '';
-          const fallback = bodyText.match(/(\d+)\s*passed,\s*(\d+)\s*failed/i);
-          if (fallback) return fallback[1] + ' passed, ' + fallback[2] + ' failed';
           return null;
         }
 

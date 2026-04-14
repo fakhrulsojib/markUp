@@ -123,6 +123,7 @@
       let passed = 0;
       let failed = 0;
       let warned = 0;
+      const _promises = [];
       const results = document.getElementById('results');
       const sandbox = document.getElementById('sandbox');
 
@@ -184,7 +185,7 @@
       // ===== Test Group 2: StorageManager — enabled default (replaces autoRender) =====
       groupHeader('2. StorageManager — enabled Default');
 
-      (async function() {
+      _promises.push((async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
@@ -204,12 +205,12 @@
         assert(valTrue === true, `enabled returns true when set to true (got: ${valTrue})`);
 
         resetStorage();
-      })();
+      })());
 
       // ===== Test Group 3: enableFileUrl removed =====
       groupHeader('3. Verify enableFileUrl is Removed');
 
-      (async function() {
+      _promises.push((async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
@@ -219,12 +220,12 @@
           'DEFAULTS.ENABLEFILEURL is undefined (removed)');
 
         resetStorage();
-      })();
+      })());
 
       // ===== Test Group 4: (Legacy autoDetect removed — replaced by 'enabled' in Phase 9.3) =====
       groupHeader('4. StorageManager — enabled replaces autoDetect (Phase 9.3)');
 
-      (async function() {
+      _promises.push((async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
@@ -234,12 +235,12 @@
         assert(val === false, `enabled returns false when set (replaces autoDetect)`);
 
         resetStorage();
-      })();
+      })());
 
       // ===== Test Group 5: Content Script Static Analysis — enabled gate (was autoRender) =====
       groupHeader('5. Content Script — enabled Gate (Static Analysis)');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -265,12 +266,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 6: enableFileUrl gate removed =====
       groupHeader('6. Content Script — enableFileUrl Gate Removed');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -283,12 +284,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 7: Content Script — APPLY_ENABLED listener (was APPLY_AUTO_RENDER) =====
       groupHeader('7. Content Script — APPLY_ENABLED Listener (Static Analysis)');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -310,12 +311,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 8: Service Worker Static Analysis — enabled gate (was autoDetect) =====
       groupHeader('8. Service Worker — enabled Gate (Static Analysis)');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
@@ -334,12 +335,12 @@
         } catch (err) {
           log('warn', `Could not fetch service-worker.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 9: Service Worker — APPLY_ENABLED Relay =====
       groupHeader('9. Service Worker — APPLY_ENABLED Relay');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
@@ -370,12 +371,12 @@
         } catch (err) {
           log('warn', `Could not fetch service-worker.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 10: Options.js — APPLY_ENABLED notification (was APPLY_AUTO_RENDER) =====
       groupHeader('10. Options.js — APPLY_ENABLED Notification');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/options/options.js');
           const content = await response.text();
@@ -394,12 +395,12 @@
         } catch (err) {
           log('warn', `Could not fetch options.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 11: Popup.js — APPLY_ENABLED notification =====
       groupHeader('11. Popup.js — Toggle Notifications');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/popup/popup.js');
           const content = await response.text();
@@ -423,12 +424,12 @@
         } catch (err) {
           log('warn', `Could not fetch popup.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 12: Banner UI — Disabled Banner Rendering =====
       groupHeader('12. Banner UI — _showDisabledBanner');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -450,12 +451,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 13: Banner CSS Classes =====
       groupHeader('13. Banner CSS — Styles Exist');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -472,12 +473,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 14: Content Script — Existing Listeners Preserved =====
       groupHeader('14. Regression — Existing MessageBus Listeners');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -500,12 +501,12 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 15: Regression — Edge Case Handlers =====
       groupHeader('15. Regression — Edge Case Handlers');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -526,7 +527,7 @@
         } catch (err) {
           log('warn', `Could not fetch content-script.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 16: Regression — Existing Constants =====
       groupHeader('16. Regression — Existing Constants');
@@ -563,7 +564,7 @@
       // ===== Test Group 18: Regression — StorageManager CRUD =====
       groupHeader('18. Regression — StorageManager CRUD');
 
-      (async function() {
+      _promises.push((async function() {
         resetStorage();
         const storage = new MARKUP_STORAGE_MANAGER();
 
@@ -584,7 +585,7 @@
         assert(removed === undefined, `Removed key returns undefined: ${removed}`);
 
         resetStorage();
-      })();
+      })());
 
       // ===== Test Group 19: Regression — EventEmitter =====
       groupHeader('19. Regression — EventEmitter');
@@ -652,7 +653,7 @@
       // ===== Test Group 22: Service Worker — Existing Handlers Preserved =====
       groupHeader('22. Regression — Service Worker Existing Handlers');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
@@ -673,12 +674,12 @@
         } catch (err) {
           log('warn', `Could not fetch service-worker.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 23: Options.js — Existing Controls Preserved =====
       groupHeader('23. Regression — Options.js Existing Controls');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/options/options.js');
           const content = await response.text();
@@ -701,12 +702,12 @@
         } catch (err) {
           log('warn', `Could not fetch options.js: ${err.message}`);
         }
-      })();
+      })());
 
       // ===== Test Group 24: Popup.js — Existing Features Preserved =====
       groupHeader('24. Regression — Popup.js Existing Features');
 
-      (async function() {
+      _promises.push((async function() {
         try {
           const response = await fetch('../src/popup/popup.js');
           const content = await response.text();
@@ -727,19 +728,15 @@
         } catch (err) {
           log('warn', `Could not fetch popup.js: ${err.message}`);
         }
-      })();
+      })());
 
-      // Wait for async tests to complete, then show summary
-      setTimeout(function() {
+      // Wait for all async tests to complete, then show summary
+      Promise.all(_promises).then(function() {
         const summary = document.getElementById('summary');
-        const total = passed + failed;
-        const cls = failed === 0 ? 'pass' : 'fail';
-        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
-        if (warned > 0) {
-          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
-        }
-        document.title = `Phase 9.1 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
-      }, 1500);
+        summary.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+        summary.textContent = passed + ' passed, ' + failed + ' failed';
+        document.title = `Phase 9.1 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${passed + failed} tests)`;
+      });
     })();
   </script>
 </body>

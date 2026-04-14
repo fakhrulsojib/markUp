@@ -728,8 +728,7 @@
       // --- Final Summary ---
       const summaryEl = document.getElementById('summary');
       summaryEl.className = 'summary ' + (totalFail === 0 ? 'all-pass' : 'has-fail');
-      summaryEl.textContent = totalPass + ' passed, ' + totalFail + ' failed — ' +
-        (totalFail === 0 ? 'ALL TESTS PASSED ✅' : 'SOME TESTS FAILED ❌');
+      summaryEl.textContent = totalPass + ' passed, ' + totalFail + ' failed';
     })();
   </script>
 </body>

@@ -280,7 +280,7 @@
 
     // Group 7: Manifest Verification
     const g7 = group('7. Manifest Configuration');
-    (async function() {
+    const p7 = (async function() {
       try {
         const response = await fetch('../src/manifest.json');
         const manifest = await response.json();
@@ -308,7 +308,7 @@
 
     // Group 8: Service Worker Verification
     const g8 = group('8. Service Worker (Recent Files)');
-    (async function() {
+    const p8 = (async function() {
       try {
         const response = await fetch('../src/background/service-worker.js');
         const code = await response.text();
@@ -330,7 +330,7 @@
 
     // Group 9: Content Script Edge Cases
     const g9 = group('9. Content Script (Edge Cases & Polish)');
-    (async function() {
+    const p9 = (async function() {
       try {
         const response = await fetch('../src/content/content-script.js');
         const code = await response.text();
@@ -356,7 +356,7 @@
 
     // Group 10: Accessibility Verification
     const g10 = group('10. Accessibility Attributes');
-    (async function() {
+    const p10 = (async function() {
       try {
         const tbResp = await fetch('../src/ui/ToolbarComponent.js');
         const tbCode = await tbResp.text();
@@ -383,7 +383,7 @@
 
     // Group 11: CSS Verification
     const g11 = group('11. CSS Files');
-    (async function() {
+    const p11 = (async function() {
       try {
         const popupCss = await (await fetch('../src/popup/popup.css')).text();
         const optionsCss = await (await fetch('../src/options/options.css')).text();
@@ -405,7 +405,7 @@
 
     // Group 12: Test Files
     const g12 = group('12. Test Files');
-    (async function() {
+    const p12 = (async function() {
       try {
         const largeDoc = await (await fetch('test-files/large-document.md')).text();
         const basicDoc = await (await fetch('test-files/basic.md')).text();
@@ -425,7 +425,7 @@
 
     // Group 13: Build Scripts
     const g13 = group('13. Build & Package Scripts');
-    (async function() {
+    const p13 = (async function() {
       try {
         const packageSh = await (await fetch('../scripts/package.sh')).text();
         const buildSh = await (await fetch('../scripts/build.sh')).text();
@@ -440,14 +440,12 @@
       }
     })();
 
-    // ---- Summary ----
-    setTimeout(() => {
+    // ---- Summary — wait for all async groups, then write ----
+    Promise.all([p7, p8, p9, p10, p11, p12, p13]).then(() => {
       const summaryEl = document.getElementById('summary');
-      const total = totalPass + totalFail;
       summaryEl.className = 'summary ' + (totalFail === 0 ? 'all-pass' : 'has-fail');
-      summaryEl.textContent = `Phase 7: ${totalPass}/${total} tests passed` +
-        (totalFail > 0 ? ` (${totalFail} failed)` : ' ✅ All pass!');
-    }, 3000);
+      summaryEl.textContent = totalPass + ' passed, ' + totalFail + ' failed';
+    });
   </script>
 </body>
 </html>

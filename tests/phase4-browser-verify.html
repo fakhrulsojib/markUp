@@ -894,12 +894,8 @@
       }
 
       const total = results.length;
-      document.getElementById('summary').innerHTML = `
-        <div class="stat total"><div class="num">${total}</div><div class="label">Total</div></div>
-        <div class="stat pass"><div class="num">${totalPass}</div><div class="label">Passed</div></div>
-        <div class="stat fail"><div class="num">${totalFail}</div><div class="label">Failed</div></div>
-        <div class="stat skip"><div class="num">${totalSkip}</div><div class="label">Skipped</div></div>
-      `;
+      document.getElementById('summary').className = totalFail === 0 ? 'all-pass' : 'has-fail';
+      document.getElementById('summary').textContent = totalPass + ' passed, ' + totalFail + ' failed';
 
       let html = '';
       for (const [groupName, tests] of Object.entries(groups)) {

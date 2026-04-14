@@ -207,7 +207,7 @@
       // ===== Test Group 2: ThemeManager Body Class Application =====
       groupHeader('2. ThemeManager Body Class (Step 8.1)');
 
-      (async function() {
+      const _p2 = (async function() {
         const storage = new MARKUP_STORAGE_MANAGER();
         const emitter = new MARKUP_EVENT_EMITTER();
         const tm = new MARKUP_THEME_MANAGER(storage, emitter);
@@ -385,7 +385,7 @@
       // ===== Test Group 6: Position Persistence =====
       groupHeader('6. Position Persistence (Step 8.2)');
 
-      (async function() {
+      const _p6 = (async function() {
         const storage = new MARKUP_STORAGE_MANAGER();
         const emitter = new MARKUP_EVENT_EMITTER();
 
@@ -427,7 +427,7 @@
       // ===== Test Group 7: StorageManager accepts toolbarPosition object =====
       groupHeader('7. StorageManager — Object Values');
 
-      (async function() {
+      const _p7 = (async function() {
         const storage = new MARKUP_STORAGE_MANAGER();
 
         const testPosition = { top: 123, left: 456 };
@@ -487,7 +487,7 @@
       // ===== Test Group 10: Service Worker Static Analysis =====
       groupHeader('10. Service Worker — Relay Handlers (Static Analysis)');
 
-      (async function() {
+      const _p10 = (async function() {
         try {
           const response = await fetch('../src/background/service-worker.js');
           const content = await response.text();
@@ -513,7 +513,7 @@
       // ===== Test Group 11: Content Script Static Analysis =====
       groupHeader('11. Content Script — MessageBus Listeners (Static Analysis)');
 
-      (async function() {
+      const _p11 = (async function() {
         try {
           const response = await fetch('../src/content/content-script.js');
           const content = await response.text();
@@ -658,17 +658,14 @@
       assert(typeof MARKUP_STORAGE_MANAGER === 'function', 'MARKUP_STORAGE_MANAGER is a function');
       assert(typeof MARKUP_EVENT_EMITTER === 'function', 'MARKUP_EVENT_EMITTER is a function');
 
-      // Wait for async tests to complete, then show summary
-      setTimeout(function() {
+      // Wait for all async tests to complete, then show summary
+      Promise.all([_p2, _p6, _p7, _p10, _p11]).then(function() {
         const summary = document.getElementById('summary');
         const total = passed + failed;
-        const cls = failed === 0 ? 'pass' : 'fail';
-        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
-        if (warned > 0) {
-          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
-        }
+        summary.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+        summary.textContent = passed + ' passed, ' + failed + ' failed';
         document.title = `Phase 8 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
-      }, 1000);
+      });
     })();
   </script>
 </body>
