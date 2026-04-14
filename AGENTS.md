@@ -67,7 +67,69 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 | **File naming** | PascalCase matching class name (e.g., `ThemeManager.js`) |
 | **Constants** | SCREAMING_SNAKE_CASE, `Object.freeze()`-d |
 | **Logger** | `Logger.debug()` for verbose output (gated by `debugLog` setting), `Logger.warn()`/`Logger.error()` always output |
-| **Test suites** | `tests/phase{N}-browser-verify.html` — browser-runnable, mock chrome APIs |
+| **Test suites** | `tests/phase{N}-browser-verify.html` — browser-runnable, mock chrome APIs. **Must follow standard summary format** (see below). |
+
+---
+
+## Test Suite Convention (Mandatory)
+
+All test suites **must** follow this exact summary format so the `tests/run-all.html` runner can parse results reliably.
+
+### Required HTML Structure
+
+```html
+<div id="summary"></div>
+```
+
+Every test file must include a `<div id="summary"></div>` element in the body.
+
+### Required Summary Output
+
+When tests complete, the summary element must be set using **`textContent`** (not `innerHTML`) in this exact format:
+
+```javascript
+const summaryEl = document.getElementById('summary');
+summaryEl.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+summaryEl.textContent = passed + ' passed, ' + failed + ' failed';
+```
+
+**Format:** `<passed_count> passed, <failed_count> failed`
+
+**Examples:**
+- `67 passed, 0 failed`
+- `42 passed, 3 failed`
+
+### Rules
+
+1. **Always use `textContent`, never `innerHTML`** — the runner uses `textContent.match()` to extract counts.
+2. **Always set both `passed` and `failed`** — even when `failed` is 0.
+3. **Element ID must be `summary`** — the runner looks for `getElementById('summary')`.
+4. **No emojis, no extra text** in the summary `textContent` — keep it to exactly `"X passed, Y failed"`.
+5. **For async tests**, use `Promise.all()` to wait for all async groups, then write the summary in `.then()`. **Never use `setTimeout()` to guess when async tests finish** — this causes intermittent race conditions with the runner's iframe polling.
+6. **CSS class convention**: Use `all-pass` / `has-fail` on the summary element.
+7. **Track all async IIFEs**: Store each async IIFE's return value (or push into a `_promises` array), then use `Promise.all(_promises).then(() => { /* write summary */ })`.
+
+### Async Summary Pattern (Mandatory)
+
+```javascript
+// For multiple async test groups:
+const _promises = [];
+
+_promises.push((async function() {
+  // async tests...
+})());
+
+_promises.push((async function() {
+  // more async tests...
+})());
+
+// Write summary ONLY after all async groups resolve
+Promise.all(_promises).then(() => {
+  const summaryEl = document.getElementById('summary');
+  summaryEl.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+  summaryEl.textContent = passed + ' passed, ' + failed + ' failed';
+});
+```
 
 ---
 
@@ -341,23 +403,26 @@ Global Exports:  All modules export via globalThis.MARKUP_* (classic scripts, no
 
 ## Test Suite Summary
 
+All 16 suites run via `tests/run-all.html` — **1234 tests total, 0 failures**.
+
 | Suite | File | Tests |
 |-------|------|-------|
-| Phase 2 | `tests/phase2-browser-verify.html` | Core utils |
-| Phase 3 | `tests/phase3-browser-verify.html` | 62 tests |
+| Phase 2 | `tests/phase2-browser-verify.html` | 33 tests |
+| Phase 3 | `tests/phase3-browser-verify.html` | 69 tests |
 | Phase 4 | `tests/phase4-browser-verify.html` | 67 tests |
 | Phase 5 | `tests/phase5-browser-verify.html` | 89 tests |
 | Phase 6 | `tests/phase6-browser-verify.html` | 143 tests |
-| Phase 7 | `tests/phase7-browser-verify.html` | Phase 7 deliverables |
+| Phase 7 | `tests/phase7-browser-verify.html` | 97 tests |
 | Phase 8 | `tests/phase8-browser-verify.html` | 78 tests |
-| Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 131 tests |
+| Phase 9.1 | `tests/phase9-step91-browser-verify.html` | 123 tests |
 | Phase 9.2 | `tests/phase9-step92-browser-verify.html` | 58 tests |
 | Phase 9.3 | `tests/phase9-step93-browser-verify.html` | 54 tests |
 | Phase 9.4 | `tests/phase9-step94-browser-verify.html` | 42 tests |
 | Phase 9.5 | `tests/phase9-step95-browser-verify.html` | 60 tests |
-| Phase 10 | `tests/phase10-browser-verify.html` | ~70 tests |
-| Phase 10.5 | `tests/phase10.5-browser-verify.html` | Post-release polish |
-| Phase 11 | `tests/phase11-browser-verify.html` | 74 tests — themed extension pages |
+| Phase 10 | `tests/phase10-browser-verify.html` | 104 tests |
+| Phase 10.5 | `tests/phase10.5-browser-verify.html` | 43 tests |
+| Phase 11 | `tests/phase11-browser-verify.html` | 74 tests |
+| Phase 12 | `tests/phase12-browser-verify.html` | ~100 tests |
 
 ---
 

@@ -6,6 +6,7 @@
 </head>
 <body>
   <h1>Phase 2 Browser Tests</h1>
+  <div id="summary"></div>
   <pre id="output"></pre>
 
   <script src="../src/utils/constants.js"></script>
@@ -140,6 +141,9 @@
     if (failed === 0) {
       out.textContent += 'All Phase 2 browser tests passed! ✅\n';
     }
+    const summaryEl = document.getElementById('summary');
+    summaryEl.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+    summaryEl.textContent = passed + ' passed, ' + failed + ' failed';
   </script>
 </body>
 </html>

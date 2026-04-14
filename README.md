@@ -226,20 +226,28 @@ Creates `markup-extension-v0.3.0.zip` ready for Chrome Web Store or sideloading.
 
 ## 🧪 Testing
 
-Browser-runnable test suites (open in Chrome):
+**1234 tests** across 16 browser-runnable test suites — run them all at once or individually:
 
+```bash
+# Start a local server and run the full test runner
+cd markUp && python3 -m http.server 8765
+# Open http://localhost:8765/tests/run-all.html
 ```
-tests/
-├── phase2-browser-verify.html    # Core utilities
-├── phase3-browser-verify.html    # Storage, messaging, detection (62 tests)
-├── phase4-browser-verify.html    # Parsing & rendering (67 tests)
-├── phase5-browser-verify.html    # Theming & styling (89 tests)
-├── phase6-browser-verify.html    # UI components (143 tests)
-├── phase7-browser-verify.html    # Popup, options, polish
-├── phase8-browser-verify.html    # UI refinements (78 tests)
-├── phase9-step{91-95}-browser-verify.html  # Settings wiring (345 tests)
-└── phase10-browser-verify.html   # Download interception (104 tests)
-```
+
+| Suite | File | Tests |
+|-------|------|-------|
+| Phase 2 | `phase2-browser-verify.html` | 33 |
+| Phase 3 | `phase3-browser-verify.html` | 69 |
+| Phase 4 | `phase4-browser-verify.html` | 67 |
+| Phase 5 | `phase5-browser-verify.html` | 89 |
+| Phase 6 | `phase6-browser-verify.html` | 143 |
+| Phase 7 | `phase7-browser-verify.html` | 97 |
+| Phase 8 | `phase8-browser-verify.html` | 78 |
+| Phase 9.1–9.5 | `phase9-step{91-95}-browser-verify.html` | 337 |
+| Phase 10 | `phase10-browser-verify.html` | 104 |
+| Phase 10.5 | `phase10.5-browser-verify.html` | 43 |
+| Phase 11 | `phase11-browser-verify.html` | 74 |
+| Phase 12 | `phase12-browser-verify.html` | ~100 |
 
 Manual QA checklist: `tests/test-checklist.md`
 

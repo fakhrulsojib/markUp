@@ -168,7 +168,7 @@
       const failed = total - passed;
       const summary = document.getElementById('summary');
       summary.className = failed === 0 ? 'all-pass' : 'has-fail';
-      summary.textContent = `${passed}/${total} passed` + (failed > 0 ? ` — ${failed} FAILED` : ' ✓');
+      summary.textContent = passed + ' passed, ' + failed + ' failed';
 
       // Update page title with results
       document.title = failed === 0

@@ -516,10 +516,8 @@
         const summary = document.getElementById('summary');
         const total = passed + failed;
         const cls = failed === 0 ? 'pass' : 'fail';
-        summary.innerHTML = `<span class="${cls}">Results: ${passed} passed, ${failed} failed out of ${total} tests</span>`;
-        if (warned > 0) {
-          summary.innerHTML += ` <span class="warn">(${warned} warnings)</span>`;
-        }
+        summary.className = 'summary ' + (failed === 0 ? 'all-pass' : 'has-fail');
+        summary.textContent = passed + ' passed, ' + failed + ' failed';
         document.title = `Phase 5 — ${failed === 0 ? 'ALL PASSED' : failed + ' FAILED'} (${total} tests)`;
       });
     })();
