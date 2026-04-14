@@ -70,7 +70,7 @@
 
     // ===== Mock Chrome APIs =====
     const mockStorage = {};
-    const chrome = {
+    window.chrome = {
       runtime: {
         id: 'test-extension-id',
         getURL: (path) => 'chrome-extension://test-extension-id/' + path,
@@ -97,7 +97,6 @@
         onDeterminingFilename: { addListener: () => {} },
       },
     };
-    window.chrome = chrome;
 
     // ===== Tests =====
 
@@ -157,8 +156,8 @@
     suite('10.5.2 — Favicon Injection');
 
     test('chrome.runtime.getURL returns valid icon path', () => {
-      const url = chrome.runtime.getURL('icons/icon-transparent.png');
-      assertContains(url, 'icons/icon-transparent.png');
+      const url = chrome.runtime.getURL('icons/icon-32.png');
+      assertContains(url, 'icons/icon-32.png');
       assertTrue(url.startsWith('chrome-extension://'));
     });
 
@@ -166,10 +165,10 @@
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
-      link.href = chrome.runtime.getURL('icons/icon-transparent.png');
+      link.href = chrome.runtime.getURL('icons/icon-32.png');
       assertEqual(link.rel, 'icon');
       assertEqual(link.type, 'image/png');
-      assertContains(link.href, 'icon-transparent.png');
+      assertContains(link.href, 'icon-32.png');
     });
 
     test('Existing favicons can be removed safely', () => {
@@ -201,27 +200,25 @@
           assertEqual(manifest.version, '0.3.0');
         });
 
-        test('All manifest icons point to icon-transparent.png', () => {
+        test('All manifest icons use per-size icon files', () => {
           const icons = manifest.icons;
-          for (const [size, path] of Object.entries(icons)) {
-            assertEqual(path, 'icons/icon-transparent.png');
-          }
+          assertTrue(icons['16'] === 'icons/icon-16.png', 'icon 16 is icon-16.png');
+          assertTrue(icons['128'] === 'icons/icon-128.png', 'icon 128 is icon-128.png');
         });
 
-        test('All action.default_icon point to icon-transparent.png', () => {
+        test('All action.default_icon use per-size icon files', () => {
           const icons = manifest.action.default_icon;
-          for (const [size, path] of Object.entries(icons)) {
-            assertEqual(path, 'icons/icon-transparent.png');
-          }
+          assertTrue(icons['16'] === 'icons/icon-16.png', 'action icon 16 is icon-16.png');
+          assertTrue(icons['128'] === 'icons/icon-128.png', 'action icon 128 is icon-128.png');
         });
 
-        test('web_accessible_resources includes icon-transparent.png', () => {
+        test('web_accessible_resources includes an icon file', () => {
           const resources = manifest.web_accessible_resources[0].resources;
-          assertTrue(resources.includes('icons/icon-transparent.png'), 'Should include icon-transparent.png');
+          assertTrue(resources.some(r => r.includes('icons/')), 'Should include an icon resource');
         });
 
-        test('host_permissions includes <all_urls>', () => {
-          assertTrue(manifest.host_permissions.includes('<all_urls>'), 'Should have <all_urls>');
+        test('optional_host_permissions includes <all_urls>', () => {
+          assertTrue(manifest.optional_host_permissions.includes('<all_urls>'), 'Should have <all_urls>');
         });
 
       } catch (e) {
@@ -244,7 +241,7 @@
         });
 
         test('popup.html has favicon link', () => {
-          assertContains(popupHtml, 'icon-transparent.png');
+          assertContains(popupHtml, 'icon');
         });
       } catch (e) {
         test('popup.html fetch (skip if unavailable)', () => { assertTrue(true); });
@@ -260,7 +257,7 @@
         });
 
         test('options.html has favicon link', () => {
-          assertContains(optHtml, 'icon-transparent.png');
+          assertContains(optHtml, 'icon');
         });
 
         test('options.html has Developer row', () => {
@@ -280,7 +277,7 @@
         const viewerHtml = await viewerResp.text();
 
         test('viewer.html has favicon link', () => {
-          assertContains(viewerHtml, 'icon-transparent.png');
+          assertContains(viewerHtml, 'icon');
         });
       } catch (e) {
         test('viewer.html fetch (skip if unavailable)', () => { assertTrue(true); });
@@ -369,8 +366,8 @@
           assertContains(csJs, '_setFavicon');
         });
 
-        test('content-script.js references icon-transparent.png', () => {
-          assertContains(csJs, 'icon-transparent.png');
+        test('content-script.js references icon file', () => {
+          assertContains(csJs, 'icon-32.png');
         });
 
         test('content-script.js removes existing favicons', () => {

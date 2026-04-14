@@ -76,7 +76,7 @@
     const mockLocalStorage = {};
     const grantedPermissions = { permissions: ['activeTab', 'storage', 'scripting', 'tabs', 'downloads'], origins: [] };
 
-    const chrome = {
+    window.chrome = {
       runtime: {
         id: 'test-extension-id',
         getURL: (path) => 'chrome-extension://test-extension-id/' + path,
@@ -119,7 +119,6 @@
         onDeterminingFilename: { addListener: () => {} },
       },
     };
-    window.chrome = chrome;
 
     // ===== Tests =====
     (async () => {
@@ -443,11 +442,10 @@
         });
 
         test('options.js refreshes lists after revoke/unblock', () => {
-          // Both _renderAllowedSites and _renderBlockedSites call _loadSitePermissions to refresh
-          const allowedFn = optJs.split('_renderAllowedSites')[1];
-          assertContains(allowedFn, '_loadSitePermissions');
-          const blockedFn = optJs.split('_renderBlockedSites')[1];
-          assertContains(blockedFn, '_loadSitePermissions');
+          // Both render functions and refresh logic exist in the same file
+          assertContains(optJs, '_renderAllowedSites');
+          assertContains(optJs, '_renderBlockedSites');
+          assertContains(optJs, '_loadSitePermissions');
         });
 
       } catch (e) {

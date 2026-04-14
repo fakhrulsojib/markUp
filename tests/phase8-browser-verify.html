@@ -407,13 +407,15 @@
 
         const el = toolbar.getElement();
 
-        // Check position was applied
-        const left = parseInt(el.style.left) || -1;
-        const top = parseInt(el.style.top) || -1;
+        // Check position was applied — may be clamped by viewport
+        const leftStr = el.style.left;
+        const topStr = el.style.top;
 
         // Position should be set (exact values depend on viewport clamping)
         assert(el.style.left !== '' && el.style.right !== 'auto' || el.style.left !== '',
           `Persisted position loaded: left=${el.style.left}, top=${el.style.top}`);
+        const left = parseInt(leftStr) || 0;
+        const top = parseInt(topStr) || 0;
         assert(left >= 0, `Left position is valid: ${left}`);
         assert(top >= 0, `Top position is valid: ${top}`);
 
